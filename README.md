@@ -4,50 +4,11 @@
 
 # AI Lens
 
-**Screenshot a region → ask AI, right where you are.**
+**框一块屏幕，原地问 AI。**
 
-[**English**](#english) · [**中文**](#中文)
+[**中文**](#中文) · [**English**](#english)
 
 </div>
-
----
-
-<a id="english"></a>
-
-## English  ·  [切换到中文 →](#中文)
-
-AI Lens is a lightweight Windows tool: press a hotkey, select a screen region, annotate it, and ask any AI about it — the answer streams **in place** over your screen. ~3 MB download, no Electron.
-
-### Features
-- 📸 **Instant capture** — a transparent overlay over the live desktop (QQ-style), zero encode latency.
-- 💬 **Ask in place** — select a region, type, the answer streams right there. Multi-turn.
-- ✏️ **Annotate** — arrow / rectangle / pen + colors, baked into what the AI sees.
-- 🔌 **Any provider** — OpenAI-compatible (OpenAI / DeepSeek / Ollama / OpenRouter / Azure), Anthropic (native), Google Gemini (native). Switch in Settings.
-- 🧲 **Model pull** — fetch the provider's model list with one click.
-- 👁️ **Vision or OCR** — send the image to vision models, or fall back to local Windows OCR for text-only models.
-- 🪶 **Tiny** — ~3 MB installer, uses the system WebView2 (no bundled browser).
-
-### Install
-Download the latest `AI Lens_x.y.z_x64-setup.exe` from [Releases](../../releases) and run it. Windows 10/11 (WebView2 is built in).
-
-### Usage
-1. Press **Ctrl + Shift + S** (configurable) — the screen dims; drag to select a region.
-2. *(Optional)* pick a tool from the toolbar and draw on the selection.
-3. Type your question and press **Enter** — the answer streams in place.
-4. **Esc** or **right-click** to cancel.
-
-Open **Settings** from the tray icon to set your provider, API key, and model (click **Pull** to load the model list).
-
-### Build from source
-```bash
-pnpm install
-pnpm tauri dev      # run in dev
-pnpm tauri build    # package an installer
-```
-Requires Rust + Node (pnpm). Built with Tauri v2 and Svelte 5.
-
-### Tech
-Tauri v2 · Svelte 5 · Rust (xcap capture, WinRT OCR) · streaming via the Tauri HTTP plugin.
 
 ---
 
@@ -55,35 +16,108 @@ Tauri v2 · Svelte 5 · Rust (xcap capture, WinRT OCR) · streaming via the Taur
 
 ## 中文  ·  [Switch to English →](#english)
 
-AI Lens 是个轻量的 Windows 工具：按下快捷键，框选屏幕一块区域，画两笔，直接问 AI——答案就在**原地**流式展开。安装包约 3 MB，不是 Electron。
+按下快捷键，屏幕压暗。框住你好奇的那块，打一句话——答案就在屏幕上原地流出来。想追问就接着问，按 Esc 回去干活。安装包 3 MB。
 
-### 功能
-- 📸 **即时截图** —— 透明覆盖层盖在实时桌面上（QQ 式），零编码延迟。
-- 💬 **就地问答** —— 框选、打字，答案原地流式出，支持多轮。
-- ✏️ **标注** —— 箭头 / 方框 / 画笔 + 颜色，烤进发给 AI 的图里。
-- 🔌 **任意服务商** —— OpenAI 兼容（OpenAI / DeepSeek / Ollama / OpenRouter / Azure）、Anthropic 原生、Google Gemini 原生，设置里切换。
-- 🧲 **模型拉取** —— 一键拉取服务商的模型列表。
-- 👁️ **视觉 / OCR** —— 给视觉模型直接发图，纯文本模型走本地 Windows OCR。
-- 🪶 **小** —— 安装包约 3 MB，用系统自带 WebView2，不打包浏览器。
+### 它做什么
+
+- 覆盖层是透明的，直接盖在实时桌面上——按下那一刻就在框选了，中间没有编码、没有等待。
+- 在选区上画个箭头、圈个框、涂两笔再问，AI 看到的就是你画完的样子。
+- OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。
+- 纯文本模型也能用：截图先过本地 Windows OCR，变成文字再发过去。
+- 跑在 Windows 10/11 自带的 WebView2 上，装完约 11 MB。
 
 ### 安装
-从 [Releases](../../releases) 下载最新 `AI Lens_x.y.z_x64-setup.exe` 运行即可。Windows 10/11 自带 WebView2。
+
+从 [Releases](../../releases) 下载 `AI Lens_x.y.z_x64-setup.exe`，运行即可。
 
 ### 用法
-1. 按 **Ctrl + Shift + S**（可改）—— 屏幕压暗，拖动框选区域。
-2. *（可选）* 从工具栏选个工具，在选区上画。
-3. 打字提问按 **回车** —— 答案原地流式展开。
-4. **Esc** 或 **右键** 取消。
 
-托盘图标打开**设置**，填服务商 / API Key / 模型（点**拉取**加载模型列表）。
+1. **Ctrl + Shift + S** —— 屏幕压暗，拖动框选。想换键去设置里改。
+2. 工具栏里挑个工具在选区上画，或者直接打字。
+3. **回车**发送，答案原地流式展开，可以接着追问。
+4. **Esc** 或右键退出。
+
+设置在托盘图标里：服务商、API Key、模型——点**拉取**直接从列表里挑。
+
+### 未来计划
+
+- [ ] 答案、代码块一键复制
+- [ ] 输入条上的快捷指令——解释 / 翻译 / 总结选区
+- [ ] 剪贴板里的图、拖进来的图也能直接问
+- [ ] 托盘里翻看历史会话
+- [ ] 标注工具栏加文字、高亮、马赛克
+- [ ] OCR 纯文字模式：框一下，文字到手
+- [ ] 框选外文，译文原地盖上去
+- [ ] 钉图：截完钉在屏幕上
+- [ ] 问答时直接换模型
+- [ ] 答案朗读
 
 ### 从源码构建
+
 ```bash
 pnpm install
 pnpm tauri dev      # 开发运行
 pnpm tauri build    # 打安装包
 ```
-需要 Rust + Node(pnpm)。基于 Tauri v2、Svelte 5。
 
-### 技术
-Tauri v2 · Svelte 5 · Rust（xcap 截屏、WinRT OCR）· 流式走 Tauri HTTP 插件。
+需要 Rust 和 Node（pnpm）。Tauri v2 + Svelte 5；截屏用 xcap，OCR 走 WinRT，流式经 Tauri HTTP 插件。
+
+### 协议
+
+[GPL-3.0](LICENSE)
+
+---
+
+<a id="english"></a>
+
+## English  ·  [切换到中文 →](#中文)
+
+Press the hotkey and the screen dims. Drag over the thing you're curious about, type a question — the answer streams out right there, on top of your screen. Follow up as many times as you want, hit Esc, you're back to work. The installer is 3 MB.
+
+### What it does
+
+- The overlay is a transparent layer over your live desktop, so the capture has nothing to encode and nothing to wait for — press, and you're already framing.
+- Draw an arrow at the part you mean, box it, scribble on it. The AI sees exactly what you drew.
+- Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list.
+- Text-only model? The screenshot runs through Windows OCR first and arrives as text.
+- Runs on the WebView2 already inside Windows 10/11 — install lands at ~11 MB.
+
+### Install
+
+Grab `AI Lens_x.y.z_x64-setup.exe` from [Releases](../../releases) and run it.
+
+### Usage
+
+1. **Ctrl + Shift + S** — screen dims, drag to select. The hotkey lives in Settings if you want a different one.
+2. Pick a tool from the toolbar and mark up the selection, or skip straight to typing.
+3. **Enter** sends. The answer streams in place; keep asking.
+4. **Esc** or right-click leaves.
+
+Settings sit in the tray icon: provider, API key, model — hit **Pull** and pick from the list.
+
+### Roadmap
+
+- [ ] Copy an answer or a code block with one click
+- [ ] Quick prompts on the input bar — explain / translate / summarize the selection
+- [ ] Ask about an image from the clipboard or a dropped file
+- [ ] Browse past conversations from the tray
+- [ ] Text labels, highlight and mosaic in the annotation toolbar
+- [ ] OCR-only mode: select, grab the text, done
+- [ ] Translate the selection and overlay the result in place
+- [ ] Pin a screenshot on top of the screen
+- [ ] Switch models right from the ask bar
+- [ ] Read answers aloud
+
+### Build from source
+
+```bash
+pnpm install
+pnpm tauri dev      # run in dev
+pnpm tauri build    # package an installer
+```
+
+Rust + Node with pnpm. Tauri v2, Svelte 5; capture by xcap, OCR via WinRT, streaming through the Tauri HTTP plugin.
+
+### License
+
+[GPL-3.0](LICENSE)
