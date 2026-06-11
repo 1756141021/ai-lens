@@ -1,0 +1,13 @@
+<!-- AI Lens app icon source. Regenerate the full set with:
+       pnpm tauri icon src-tauri/icons/icon-source.svg
+     (or render to a 1024 PNG first if the CLI needs a raster source). -->
+<svg viewBox="0 0 256 256" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#4a90ff"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs>
+  <rect x="0" y="0" width="256" height="256" rx="57" fill="url(#g)"/>
+  <circle cx="128" cy="128" r="78" fill="none" stroke="#fff" stroke-width="13"/>
+  <g stroke="#fff" stroke-width="9" stroke-linecap="round">
+    <path d="M206 128 L150.7 144.5"/><path d="M167 195.5 L125 155.9"/><path d="M89 195.5 L102.4 139.4"/>
+    <path d="M50 128 L105.4 111.5"/><path d="M89 60.5 L131 100.1"/><path d="M167 60.5 L153.6 116.6"/>
+  </g>
+</svg>

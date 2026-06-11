@@ -1,0 +1,85 @@
+import { streamChat, type ChatTurn, type ApiConfig } from "./api";
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  imageBase64?: string;
+  ocrText?: string;
+}
+
+let messages = $state<ChatMessage[]>([]);
+let streaming = $state(false);
+let error = $state<string | null>(null);
+let abortController: AbortController | null = null;
+
+export function getMessages() {
+  return messages;
+}
+
+export function isStreaming() {
+  return streaming;
+}
+
+export function getError() {
+  return error;
+}
+
+export function clearChat() {
+  messages = [];
+  error = null;
+  cancelStream();
+}
+
+export function cancelStream() {
+  if (abortController) {
+    abortController.abort();
+    abortController = null;
+  }
+  streaming = false;
+}
+
+export async function sendMessage(
+  config: ApiConfig,
+  text: string,
+  imageBase64?: string,
+  ocrText?: string,
+) {
+  error = null;
+
+  // ocrText is stored on the turn itself so history stays self-contained.
+  messages = [...messages, { role: "user", content: text, imageBase64, ocrText }];
+
+  const turns: ChatTurn[] = messages.map((msg) => ({
+    role: msg.role,
+    text: msg.content,
+    imageBase64: msg.imageBase64,
+    ocrText: msg.ocrText,
+  }));
+
+  messages = [...messages, { role: "assistant", content: "" }];
+  // The reactive proxy element — mutating its content is O(1) and reactive,
+  // instead of copying the whole array on every streamed token.
+  const assistantMsg = messages[messages.length - 1];
+
+  streaming = true;
+  abortController = new AbortController();
+
+  try {
+    for await (const token of streamChat(config, turns, abortController.signal)) {
+      assistantMsg.content += token;
+    }
+  } catch (e: any) {
+    if (e.name !== "AbortError") {
+      error = e.message || "Unknown error";
+    }
+  } finally {
+    streaming = false;
+    abortController = null;
+    // Drop the empty assistant placeholder if the stream produced nothing
+    // (error or abort before the first token) — otherwise it renders as a
+    // stuck typing bubble and pollutes later requests with an empty turn.
+    if (assistantMsg.content === "") {
+      messages = messages.filter((m) => m !== assistantMsg);
+    }
+  }
+}

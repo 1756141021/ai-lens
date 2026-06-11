@@ -1,0 +1,29 @@
+[package]
+name = "ai-lens"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "ai_lens_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-http = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png"] }
+xcap = "0.7"
+dirs = "6"
+
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "s"

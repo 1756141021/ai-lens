@@ -1,0 +1,69 @@
+:root {
+  /* Windows 7 Aero — light glass over a real blurred desktop (window is transparent + blur). */
+  --glass: rgba(244, 248, 253, 0.55);
+  --glass-strong: rgba(248, 251, 255, 0.78);
+  --bg-primary: transparent;
+  --bg-secondary: rgba(255, 255, 255, 0.5);
+  --bg-tertiary: rgba(60, 110, 170, 0.1);
+  --bg-input: rgba(255, 255, 255, 0.9);
+  --border: rgba(120, 145, 180, 0.35);
+  --border-focus: #3c7fb1;
+  --text-primary: #1b2733;
+  --text-secondary: #4a5a6a;
+  --text-muted: #8090a0;
+  --accent: #2e8bd6;
+  --accent-hover: #1f78c8;
+  --accent-dim: rgba(46, 139, 214, 0.1);
+  --user-bubble: #2e8bd6;
+  --ai-bubble: rgba(255, 255, 255, 0.72);
+  --warning-bg: rgba(240, 180, 79, 0.14);
+  --warning-text: #8a6516;
+  --warning-border: rgba(200, 150, 60, 0.3);
+  --error-text: #c0392b;
+  --aero-glow: 0 0 4px rgba(126, 180, 234, 0.9);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: #181a21;
+}
+
+body {
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  line-height: 1.5;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.markdown-body {
+  user-select: text;
+  -webkit-user-select: text;
+}
