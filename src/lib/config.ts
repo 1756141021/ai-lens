@@ -10,6 +10,7 @@ export interface AppConfig {
     supports_vision: boolean;
     auth_header: string;
     api_version: string;
+    models: string[];
   };
   hotkey: string;
   cache: { max_count: number };

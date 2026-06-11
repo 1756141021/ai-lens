@@ -5,8 +5,9 @@
   import { listen } from "@tauri-apps/api/event";
   import { Marked } from "marked";
   import hljs from "highlight.js";
-  import { loadConfig, toApiConfig, type AppConfig } from "../lib/config";
-  import type { ApiConfig } from "../lib/api";
+  import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+  import { loadConfig, saveConfig, toApiConfig, type AppConfig } from "../lib/config";
+  import { fetchModels, type ApiConfig } from "../lib/api";
   import {
     getMessages,
     isStreaming,
@@ -43,6 +44,21 @@
   let text = $state("");
   let inputEl = $state<HTMLInputElement>();
   let msgsEl = $state<HTMLDivElement>();
+  let pendingSend = $state(false);
+  let copiedIdx = $state(-1);
+
+  // --- model switch (ask bar) ---
+  let curModel = $state("");
+  let modelList = $state<string[]>([]);
+  let menuOpen = $state(false);
+  let pullingModels = $state(false);
+  let pullError = $state<string | null>(null);
+
+  const PRESETS = [
+    { label: "解释", text: "解释这块内容" },
+    { label: "翻译", text: "翻译这块内容：外语翻译成中文，中文翻译成英文" },
+    { label: "总结", text: "用几句话总结这块内容的要点" },
+  ];
 
   // --- annotation (drawn in CSS px, same space as selRect) ---
   type Tool = "none" | "arrow" | "rect" | "pen";
@@ -56,15 +72,49 @@
   let cur: Shape | null = null; // in-progress stroke
   let drawingAnno = false;
 
+  const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
+  const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>`;
+  const FAIL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+
   const marked = new Marked({
     renderer: {
       code({ text, lang }) {
         const language = lang && hljs.getLanguage(lang) ? lang : "plaintext";
-        return `<pre><code class="hljs">${hljs.highlight(text, { language }).value}</code></pre>`;
+        return `<div class="cb"><button class="cbcopy" title="复制代码">${COPY_SVG}</button><pre><code class="hljs">${hljs.highlight(text, { language }).value}</code></pre></div>`;
       },
     },
   });
   const renderMd = (c: string) => marked.parse(c) as string;
+
+  async function copyText(t: string): Promise<boolean> {
+    try {
+      await writeText(t);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Code-block buttons live inside {@html} markup, so Svelte can't bind them —
+  // one delegated handler on .msgs covers every block.
+  async function onMsgsClick(e: MouseEvent) {
+    const btn = (e.target as Element).closest?.(".cbcopy") as HTMLButtonElement | null;
+    if (!btn) return;
+    const code = btn.parentElement?.querySelector("pre code");
+    const ok = await copyText(code?.textContent ?? "");
+    btn.innerHTML = ok ? CHECK_SVG : FAIL_SVG;
+    setTimeout(() => {
+      if (btn.isConnected) btn.innerHTML = COPY_SVG;
+    }, 1200);
+  }
+
+  async function copyAnswer(i: number, content: string) {
+    if (!(await copyText(content))) return;
+    copiedIdx = i;
+    setTimeout(() => {
+      if (copiedIdx === i) copiedIdx = -1;
+    }, 1200);
+  }
 
   onMount(() => {
     const ro = new ResizeObserver(() => sizeCanvas());
@@ -86,6 +136,8 @@
     try {
       config = await loadConfig();
       apiConfig = toApiConfig(config);
+      curModel = config.api.model;
+      modelList = config.api.models ?? [];
     } catch {}
 
     const m = await invoke<Meta | null>("get_capture_meta");
@@ -105,6 +157,11 @@
     shapes = [];
     cur = null;
     drawingAnno = false;
+    pendingSend = false;
+    copiedIdx = -1;
+    menuOpen = false;
+    pullingModels = false;
+    pullError = null;
 
     dpr = window.devicePixelRatio || 1;
     sizeCanvas();
@@ -116,7 +173,14 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape") getCurrentWindow().hide();
+    if (e.key === "Escape") {
+      if (menuOpen) {
+        menuOpen = false;
+        inputEl?.focus();
+        return;
+      }
+      getCurrentWindow().hide();
+    }
   }
 
   function sizeCanvas() {
@@ -344,29 +408,86 @@
     })();
   }
 
-  async function submit() {
-    const t = text.trim();
-    if (!t || !apiConfig) return;
-    if (isStreaming()) { cancelStream(); return; }
-    const first = getMessages().length === 0;
-    text = "";
-    if (first) {
-      // wait for the crop/OCR so the first turn always carries the image
-      if (capturePromise) await capturePromise;
-      // Vision + annotations → send the baked composite; otherwise the clean crop.
-      let img = imageBase64;
-      if (config?.api.supports_vision && shapes.length) {
-        const baked = await composite();
-        if (baked) img = baked;
+  async function send(t: string) {
+    if (!apiConfig) return;
+    if (getMessages().length === 0) {
+      pendingSend = true;
+      try {
+        // wait for the crop/OCR so the first turn always carries the image
+        if (capturePromise) await capturePromise;
+        // Vision + annotations → send the baked composite; otherwise the clean crop.
+        let img = imageBase64;
+        if (config?.api.supports_vision && shapes.length) {
+          const baked = await composite();
+          if (baked) img = baked;
+        }
+        sendMessage(apiConfig, t, img, ocrText);
+      } finally {
+        pendingSend = false;
       }
-      sendMessage(apiConfig, t, img, ocrText);
     } else {
       sendMessage(apiConfig, t);
     }
   }
+
+  function submit() {
+    if (isStreaming()) { cancelStream(); return; }
+    const t = text.trim();
+    if (!t) return;
+    text = "";
+    send(t);
+  }
+
+  function sendPreset(t: string) {
+    if (pendingSend || isStreaming()) return;
+    inputEl?.focus();
+    send(t);
+  }
+
   function onInputKey(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   }
+
+  function pickModel(m: string) {
+    menuOpen = false;
+    curModel = m;
+    if (apiConfig) apiConfig.model = m;
+    if (config) {
+      config.api.model = m;
+      saveConfig(config).catch(() => {});
+    }
+    inputEl?.focus();
+  }
+
+  async function pullModelsLive() {
+    if (!apiConfig) return;
+    pullingModels = true;
+    pullError = null;
+    try {
+      const list = await fetchModels(apiConfig);
+      modelList = list;
+      if (!list.length) pullError = "没拉到模型";
+      else if (config) {
+        config.api.models = list;
+        saveConfig(config).catch(() => {});
+      }
+    } catch (e: any) {
+      pullError = `拉取失败：${e?.message || e}`;
+    } finally {
+      pullingModels = false;
+    }
+  }
+
+  // Close the model menu on outside click. No full-screen backdrop — that
+  // would swallow the canvas right-click-to-hide.
+  $effect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as Element)?.closest?.(".model")) menuOpen = false;
+    };
+    window.addEventListener("mousedown", close, true);
+    return () => window.removeEventListener("mousedown", close, true);
+  });
 
   // auto-scroll answers
   $effect(() => {
@@ -439,12 +560,18 @@
       </div>
 
       {#if getMessages().length || getError() || captureError}
-        <div class="msgs" bind:this={msgsEl}>
-          {#each getMessages() as m}
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+        <div class="msgs" bind:this={msgsEl} onclick={onMsgsClick}>
+          {#each getMessages() as m, i}
             {#if m.role === "user"}
               <div class="q">问：<b>{m.content}</b></div>
             {:else}
               <div class="a">
+                {#if m.content && !(isStreaming() && i === getMessages().length - 1)}
+                  <button class="acopy" title="复制回答" onclick={() => copyAnswer(i, m.content)}>
+                    {@html copiedIdx === i ? CHECK_SVG : COPY_SVG}
+                  </button>
+                {/if}
                 {#if m.content}{@html renderMd(m.content)}{:else}<span class="dots"><i></i><i></i><i></i></span>{/if}
               </div>
             {/if}
@@ -454,7 +581,34 @@
         </div>
       {/if}
 
+      {#if !getMessages().length && !pendingSend && !captureError}
+        <div class="chips">
+          {#each PRESETS as p}
+            <button class="chip glass" onclick={() => sendPreset(p.text)}>{p.label}</button>
+          {/each}
+        </div>
+      {/if}
+
       <div class="bar glass">
+        <div class="model">
+          <button class="modelpill" title="切换模型" onclick={() => { menuOpen = !menuOpen; pullError = null; }}>
+            {curModel || "选择模型"}
+          </button>
+          {#if menuOpen}
+            <div class="menu glass">
+              {#if modelList.length}
+                {#each modelList as m}
+                  <button class="mi" class:on={m === curModel} onclick={() => pickModel(m)}>{m}</button>
+                {/each}
+              {:else}
+                <button class="mi" onclick={pullModelsLive} disabled={pullingModels}>
+                  {pullingModels ? "拉取中…" : "拉取模型列表"}
+                </button>
+              {/if}
+              {#if pullError}<div class="mierr">{pullError}</div>{/if}
+            </div>
+          {/if}
+        </div>
         <input
           bind:this={inputEl}
           bind:value={text}
@@ -531,7 +685,23 @@
   }
   .q { font-size: 12px; color: #8b90a0; }
   .q b { color: #cfd4df; font-weight: 600; }
-  .a { font-size: 13.5px; line-height: 1.62; color: #e7eaf1; }
+  .a { position: relative; font-size: 13.5px; line-height: 1.62; color: #e7eaf1; }
+  .acopy {
+    position: absolute; top: 0; right: 0; width: 22px; height: 22px; border: 0; border-radius: 6px;
+    background: rgba(255,255,255,0.07); color: #9aa0ad; cursor: pointer; opacity: 0; transition: opacity .12s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .a:hover .acopy { opacity: 1; }
+  .acopy:hover { background: rgba(255,255,255,0.14); color: #fff; }
+  .acopy :global(svg), .a :global(.cbcopy svg) { width: 13px; height: 13px; }
+  .a :global(.cb) { position: relative; }
+  .a :global(.cbcopy) {
+    position: absolute; top: 15px; right: 7px; width: 24px; height: 24px; border: 0; border-radius: 6px;
+    background: rgba(255,255,255,0.08); color: #9aa0ad; cursor: pointer; opacity: 0; transition: opacity .12s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .a :global(.cb:hover .cbcopy) { opacity: 1; }
+  .a :global(.cbcopy:hover) { background: rgba(255,255,255,0.16); color: #fff; }
   .a :global(code) { font-family: "Cascadia Code", ui-monospace, monospace; font-size: 12.5px; background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 5px; }
   .a :global(pre) { margin: 9px 0 2px; padding: 11px 13px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); overflow: auto; }
   .a :global(pre code) { background: transparent; padding: 0; font-size: 12.5px; line-height: 1.55; color: #dfe4ee; }
@@ -545,7 +715,34 @@
   .dots i:nth-child(3) { animation-delay: .3s; }
   @keyframes b { 0%,60%,100%{opacity:.35;transform:translateY(0)} 30%{opacity:1;transform:translateY(-3px)} }
 
-  .bar { display: flex; align-items: center; gap: 10px; padding: 11px 12px 11px 16px; }
+  .chips { display: flex; gap: 6px; }
+  .chip {
+    padding: 5px 12px; font-size: 12px; color: #aeb4c0; border: 1px solid rgba(255,255,255,0.09);
+    cursor: pointer; border-radius: 9px; transition: background .12s, color .12s;
+  }
+  .chip:hover { background: rgba(58,130,246,0.22); color: #fff; }
+
+  .model { position: relative; flex-shrink: 0; }
+  .modelpill {
+    max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    border: 0; border-radius: 7px; padding: 5px 9px; font-size: 11.5px; color: #8b90a0;
+    background: rgba(255,255,255,0.06); cursor: pointer; transition: background .12s, color .12s;
+  }
+  .modelpill:hover { background: rgba(255,255,255,0.12); color: #cdd2dc; }
+  .menu {
+    position: absolute; bottom: calc(100% + 10px); left: 0; min-width: 200px; max-width: 300px;
+    max-height: 240px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 1px;
+  }
+  .mi {
+    border: 0; background: transparent; text-align: left; font-size: 12px; padding: 6px 10px;
+    border-radius: 7px; color: #cdd2dc; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mi:hover:not(:disabled) { background: rgba(255,255,255,0.08); color: #fff; }
+  .mi.on { color: #3a82f6; }
+  .mi:disabled { opacity: 0.5; cursor: default; }
+  .mierr { font-size: 11px; color: #ff9b9b; padding: 5px 10px; }
+
+  .bar { display: flex; align-items: center; gap: 10px; padding: 11px 12px 11px 12px; }
   .bar input { flex: 1; border: 0; background: transparent; outline: none; font-size: 14px; color: #eef1f6; }
   .bar input::placeholder { color: #8b90a0; }
   .send { width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 9px; cursor: pointer; background: #3a82f6; display: flex; align-items: center; justify-content: center; }

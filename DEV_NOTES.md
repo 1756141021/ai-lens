@@ -60,7 +60,21 @@ src/
   encode of the full monitor cost ~700ms–1s (see Performance).
 - **In-place ask**: after selection, a dark-glass stack (annotation toolbar + answer messages +
   input) is absolute-positioned anchored to the selection, clamped on-screen. Everything happens
-  in the one overlay window — no second popup.
+  in the one overlay window — no second popup. (The earlier design popped a second window with
+  hide/show/resize churn = visible flicker; single window + zero geometry changes = zero flicker.)
+  Quick-prompt chips (解释/翻译/总结) sit between the toolbar and the input until the first
+  message; they go through the same `send()` path as typing (awaits the crop, bakes annotations).
+- **Copy via clipboard-manager plugin**: answer + per-code-block copy buttons. WebView2 routes
+  `navigator.clipboard` through a PermissionRequested event Tauri doesn't auto-grant, so writes go
+  through `tauri-plugin-clipboard-manager` (capability `clipboard-manager:allow-write-text`).
+  Code blocks are `{@html}` markup — Svelte can't bind events inside, so the marked code renderer
+  wraps each block as `.cb` + `.cbcopy` button and ONE delegated click handler on `.msgs` reads
+  the sibling `pre code` `textContent` (highlight spans don't change textContent).
+- **Model switch in the ask bar**: a pill next to the input opens an upward glass dropdown of
+  `api.models` (persisted list — pulled in Settings or live from the overlay). Picking saves the
+  whole config (`set_config` only re-registers the hotkey when it changed, so no side effects).
+  The Settings window is hidden+reused, so it listens to `config-changed` and remounts its form —
+  otherwise its stale Save would revert the overlay's pick.
 - **Annotation**: arrow / rectangle / freehand pen + color + undo. Shapes are stored in CSS-px
   (same space as `selRect`) and drawn on the canvas, clipped to the selection. For vision sends
   with annotations, `composite()` bakes the shapes onto the **full-res clean crop** (not the
@@ -100,21 +114,22 @@ The hot path used to JPEG-encode the full monitor before showing the overlay. Fi
 - Swapping to the SIMD `jpeg-encoder` crate: ~415ms.
 - Downscaling the preview before encode: ~160ms.
 - **`[profile.dev]` opt-level=3 on our own crate** was the real unlock for the above — generic
-  `image`-crate fns (`resize`, `encode`) **monomorphize into THIS crate**, so leaving it at
-  opt-level 0 left the hot pixel work unoptimized (a hand-rolled RGBA→RGB loop hit ~900ms; a
-  `imageops::resize` call hit ~1.4s). Both `[profile.dev]` and `[profile.dev.package."*"]` are now
-  opt-level=3. **Keep this** — `capture_region`'s PNG encode is still generic.
+  `image`-crate fns (`resize`, `encode`) **monomorphize into THE CALLING crate**, so
+  `[profile.dev.package."*"]` alone doesn't optimize them (a hand-rolled RGBA→RGB loop hit ~900ms;
+  an `imageops::resize` call hit ~1.4s). Remember this trap if image work ever returns to the hot
+  path.
 - Final answer: went **transparent overlay → zero encode**. The encode crates were removed; only
-  PNG (for the crop) remains.
+  PNG (for the crop, off the hot path) remains — so the dev opt-level overrides were reverted too
+  (smaller `target/`, faster incremental builds). Only `[profile.release]` keeps strip/lto/opt-s.
 
 ## Config
 
 `%APPDATA%/ai-lens/config.json` — auto-created on first run.
 
 Key fields: `api.provider` (openai/anthropic/gemini), `api.base_url` (blank → official),
-`api.api_key`, `api.model`, `api.supports_vision` (true → send image incl. annotations;
-false → local OCR text), `api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`,
-`ocr.language`.
+`api.api_key`, `api.model`, `api.models` (persisted pulled model list, fills the ask-bar
+dropdown), `api.supports_vision` (true → send image incl. annotations; false → local OCR text),
+`api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`, `ocr.language`.
 
 ## Running
 
@@ -123,8 +138,8 @@ pnpm install
 pnpm tauri dev
 ```
 
-First `tauri dev` after a profile change recompiles all deps optimized (one-time, a few minutes).
-Each Rust edit after is ~15–20s (own crate is opt-level=3 too — slower compile, faster runtime).
+First `tauri dev` after a clean (or a profile/dependency change) recompiles all deps once.
+Incremental Rust edits after that are seconds.
 
 ## Self-verification (no direct GUI access)
 
@@ -144,3 +159,6 @@ Each Rust edit after is ~15–20s (own crate is opt-level=3 too — slower compi
 - [x] HTTP plugin (CORS bypass) + real error messages
 - [x] Vision / OCR fallback, configurable hotkey, multi-monitor, screenshot-cache cleanup
 - [x] Capture speed: zero-encode transparent overlay (was ~1s JPEG encode)
+- [x] One-click copy: whole answer + per-code-block (clipboard-manager plugin)
+- [x] Quick prompts on the input bar (解释/翻译/总结)
+- [x] Model switch from the ask bar (persisted `api.models`, in-overlay pull)

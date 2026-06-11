@@ -20,6 +20,8 @@ pub struct ApiConfig {
     pub auth_header: String,
     #[serde(default = "default_api_version")]
     pub api_version: String,
+    #[serde(default)]
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +86,7 @@ impl Default for ApiConfig {
             supports_vision: true,
             auth_header: default_auth_header(),
             api_version: default_api_version(),
+            models: Vec::new(),
         }
     }
 }

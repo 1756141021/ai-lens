@@ -21,6 +21,7 @@
     supportsVision: config.api.supports_vision,
     authHeader: config.api.auth_header,
     apiVersion: config.api.api_version,
+    models: config.api.models ?? [],
     hotkey: config.hotkey,
     maxCount: config.cache.max_count,
     ocrLanguage: config.ocr.language,
@@ -40,7 +41,7 @@
   let saving = $state(false);
   let saveError = $state<string | null>(null);
 
-  let models = $state<string[]>([]);
+  let models = $state<string[]>(init.models);
   let loadingModels = $state(false);
   let modelsError = $state<string | null>(null);
 
@@ -87,6 +88,7 @@
         supports_vision: supportsVision,
         auth_header: authHeader.trim() || "Authorization",
         api_version: apiVersion.trim() || "2024-10-21",
+        models: $state.snapshot(models),
       },
       hotkey: hotkey.trim() || "ctrl+shift+s",
       cache: { max_count: Math.max(1, Math.floor(Number(maxCount) || 20)) },
@@ -109,7 +111,7 @@
       <span class="sec">API</span>
       <label>
         <span class="lb">服务商 (Provider)</span>
-        <select bind:value={provider}>
+        <select bind:value={provider} onchange={() => (models = [])}>
           <option value="openai">OpenAI 兼容（OpenAI / DeepSeek / Ollama / OpenRouter / Azure…）</option>
           <option value="anthropic">Anthropic（Claude）</option>
           <option value="gemini">Google Gemini</option>

@@ -2,6 +2,18 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.3.0]
+
+### Added
+- **One-click copy** — hover an answer to copy it as markdown; every code block gets its own copy button. Clipboard writes go through the official clipboard-manager plugin (WebView2's `navigator.clipboard` needs a permission grant Tauri doesn't auto-handle).
+- **Quick prompts** — 解释 / 翻译 / 总结 chips above the input bar, shown until the first message; one click sends with the selection attached.
+- **Model switch in the ask bar** — a model pill next to the input opens the persisted model list; picking one saves it for future captures. The list can also be pulled right from the overlay. Pulled models now persist in config (`api.models`).
+
+### Fixed
+- HTTP scope `http://*` / `https://*` only matched default ports, so custom-port endpoints — local Ollama (`localhost:11434`) included — were rejected with "url not allowed". Scope is now `*:*`.
+- Stop button did nothing during streaming when the input was empty (the empty-input check ran first).
+- Settings window is hidden and reused, so it showed stale values after the overlay saved a model switch — pressing 保存 there would have reverted it. It now reloads on `config-changed`.
+
 ## [0.2.0]
 
 ### Added
