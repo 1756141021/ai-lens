@@ -3,6 +3,7 @@ mod capture;
 mod config;
 mod cursor;
 mod ocr;
+mod updater;
 
 use std::sync::Mutex;
 use tauri::{
@@ -109,6 +110,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Mutex::new(app_config))
         .manage(Mutex::new(config_error))
         .manage(Mutex::new(None::<image::RgbaImage>))
@@ -116,8 +118,10 @@ pub fn run() {
         .setup(move |app| {
             let cap = MenuItem::with_id(app, "capture", "截图", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
+            let upd = MenuItem::with_id(app, "update", "检查更新", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&cap, &settings, &quit])?;
+            let menu = Menu::with_items(app, &[&cap, &settings, &upd, &quit])?;
+            app.manage(updater::UpdateState::new(upd.clone()));
 
             let icon = app
                 .default_window_icon()
@@ -131,6 +135,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
                     "settings" => open_settings(app),
+                    "update" => updater::on_menu_click(app),
                     "capture" => {
                         let _ = run_capture(app);
                     }
@@ -158,6 +163,8 @@ pub fn run() {
 
             cursor::build_cursor_window(&handle).ok();
             cursor::spawn_follower();
+
+            updater::spawn_startup_check(&handle);
 
             // First run (no API key yet): open Settings so the user can configure.
             if needs_setup {

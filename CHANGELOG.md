@@ -2,6 +2,11 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.6.0]
+
+### Added
+- **In-app auto-update** — the tray menu gains 检查更新. A silent startup check renames it to "更新到 vX.Y.Z" when a release is newer; clicking downloads the signed NSIS package (progress in the menu text), verifies the signature, and installs passively with an automatic relaunch. Updates are pulled from this repo's GitHub Releases (`latest.json`); signing keys live locally in the gitignored `.signing/`.
+
 ## [0.5.0]
 
 ### Added

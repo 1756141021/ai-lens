@@ -145,6 +145,30 @@ dropdown), `api.supports_vision` (true → send image incl. annotations; false �
 `api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`, `ocr.language`,
 `cursor.{enabled,radius,opacity,color}` (highlight ring; radius in physical px).
 
+## Auto-update & releases
+
+- **Signing keys**: `.signing/ai-lens.key` (private) + `key-password.txt` + `.pub` — the whole
+  dir is gitignored. The pubkey is embedded in `tauri.conf.json` (`plugins.updater.pubkey`).
+  **Back the private key + password up OUTSIDE the repo** — lose them and existing installs can
+  never accept another update. Regenerate: `pnpm tauri signer generate -w .signing/ai-lens.key -p <pw> -f`.
+  Windows gotcha: an empty env var is deleted by PowerShell, so a passwordless key can't be
+  used unattended — that's why the key HAS a password, stored next to it.
+- **Update flow (app side, `updater.rs`)**: tray item 检查更新; silent startup check
+  (release builds only) renames it to 更新到 vX.Y.Z; click → download (progress in menu text,
+  signature verified) → NSIS `/UPDATE` passive install → installer relaunches the app
+  (`install()` exits the process — code after `download_and_install` is unreachable on Windows).
+- **Release**: bump version in tauri.conf.json + Cargo.toml + package.json, update CHANGELOG,
+  commit, then `pwsh scripts/release.ps1` — it builds signed artifacts, writes `latest.json`
+  (GitHub turns spaces in asset names into DOTS — the script accounts for it), and
+  `gh release create` with setup.exe/.sig/.msi/latest.json. `latest.json` must be on the
+  LATEST release or `releases/latest/download/latest.json` 404s (updater treats it as no-op).
+- **MSI caveat**: auto-update always installs the NSIS payload, so MSI-installed users migrate
+  to the NSIS lineage (stale entry in Add/Remove). MSI stays a manual-download option.
+- **Local E2E without publishing**: serve a fake-newer `latest.json` + signed setup.exe via
+  `python -m http.server 8765`, run `pnpm tauri dev -- --config dev-update.json` (overrides
+  endpoints to localhost; `dangerousInsecureTransportProtocol` permits http). `Update::download()`
+  verifies the signature without installing.
+
 ## Running
 
 ```
@@ -180,3 +204,4 @@ Incremental Rust edits after that are seconds.
 - [x] AI disclaimer line under answers
 - [x] First-run onboarding (no API key → Settings opens itself)
 - [x] 开机自启 toggle (tauri-plugin-autostart, OS-backed — not in config.json)
+- [x] In-app auto-update (tray menu, signed GitHub Releases, see Auto-update & releases)

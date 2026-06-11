@@ -8,6 +8,9 @@ src-tauri/target/
 # design scratch (may contain a personal desktop screenshot)
 mockups/
 
+# updater signing keys — the private key must NEVER be committed
+.signing/
+
 # editor / OS
 .vscode/
 .idea/
