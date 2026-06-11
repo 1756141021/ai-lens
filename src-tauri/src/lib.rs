@@ -1,6 +1,7 @@
 mod cache;
 mod capture;
 mod config;
+mod cursor;
 mod ocr;
 
 use std::sync::Mutex;
@@ -149,6 +150,9 @@ pub fn run() {
 
             // Prewarm the overlay (hidden) so the first capture is as fast as the rest.
             build_overlay(&handle).ok();
+
+            cursor::build_cursor_window(&handle).ok();
+            cursor::spawn_follower();
 
             Ok(())
         })

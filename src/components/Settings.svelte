@@ -25,6 +25,10 @@
     hotkey: config.hotkey,
     maxCount: config.cache.max_count,
     ocrLanguage: config.ocr.language,
+    cursorEnabled: config.cursor?.enabled ?? true,
+    cursorRadius: config.cursor?.radius ?? 16,
+    cursorOpacity: config.cursor?.opacity ?? 0.4,
+    cursorColor: config.cursor?.color ?? "#ff3b30",
   }));
 
   let provider = $state(init.provider);
@@ -37,6 +41,10 @@
   let hotkey = $state(init.hotkey);
   let maxCount = $state(init.maxCount);
   let ocrLanguage = $state(init.ocrLanguage);
+  let cursorEnabled = $state(init.cursorEnabled);
+  let cursorRadius = $state(init.cursorRadius);
+  let cursorOpacity = $state(init.cursorOpacity);
+  let cursorColor = $state(init.cursorColor);
 
   let saving = $state(false);
   let saveError = $state<string | null>(null);
@@ -93,6 +101,12 @@
       hotkey: hotkey.trim() || "ctrl+shift+s",
       cache: { max_count: Math.max(1, Math.floor(Number(maxCount) || 20)) },
       ocr: { language: ocrLanguage.trim() || "zh-Hans" },
+      cursor: {
+        enabled: cursorEnabled,
+        radius: Math.max(4, Math.min(64, Math.floor(Number(cursorRadius) || 16))),
+        opacity: Math.max(0.05, Math.min(1, Number(cursorOpacity) || 0.4)),
+        color: /^#[0-9a-fA-F]{6}$/.test(cursorColor) ? cursorColor : "#ff3b30",
+      },
     };
     try {
       await saveConfig(next);
@@ -157,6 +171,28 @@
         开：把截图<b>直接发给 AI 看</b>（需模型支持图片，多数现代模型都支持，推荐开着）。<br />
         关：本地先把截图里的<b>文字识别出来（OCR）</b>，只发文字——给不支持图片的纯文本模型用。
       </span>
+    </section>
+
+    <section>
+      <span class="sec">光标高亮</span>
+      <label class="row">
+        <input type="checkbox" bind:checked={cursorEnabled} />
+        <span>跟随鼠标显示圆圈</span>
+      </label>
+      {#if cursorEnabled}
+        <label>
+          <span class="lb">半径（px）</span>
+          <input type="number" min="4" max="64" bind:value={cursorRadius} />
+        </label>
+        <label>
+          <span class="lb">不透明度（{Math.round(cursorOpacity * 100)}%）</span>
+          <input type="range" min="0.05" max="1" step="0.05" bind:value={cursorOpacity} />
+        </label>
+        <label>
+          <span class="lb">颜色</span>
+          <input type="color" bind:value={cursorColor} />
+        </label>
+      {/if}
     </section>
 
     <details class="adv">
@@ -299,6 +335,21 @@
     width: 16px;
     height: 16px;
     accent-color: #3a82f6;
+    cursor: pointer;
+  }
+
+  input[type="range"] {
+    accent-color: #3a82f6;
+    cursor: pointer;
+  }
+
+  input[type="color"] {
+    width: 44px;
+    height: 28px;
+    padding: 2px;
+    background: #23262f;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
     cursor: pointer;
   }
 

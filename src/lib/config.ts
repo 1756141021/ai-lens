@@ -15,6 +15,7 @@ export interface AppConfig {
   hotkey: string;
   cache: { max_count: number };
   ocr: { language: string };
+  cursor: { enabled: boolean; radius: number; opacity: number; color: string };
 }
 
 export async function loadConfig(): Promise<AppConfig> {

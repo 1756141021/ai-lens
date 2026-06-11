@@ -36,6 +36,18 @@ pub struct OcrConfig {
     pub language: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_cursor_radius")]
+    pub radius: u32,
+    #[serde(default = "default_cursor_opacity")]
+    pub opacity: f64,
+    #[serde(default = "default_cursor_color")]
+    pub color: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
@@ -46,6 +58,8 @@ pub struct AppConfig {
     pub cache: CacheConfig,
     #[serde(default)]
     pub ocr: OcrConfig,
+    #[serde(default)]
+    pub cursor: CursorConfig,
 }
 
 fn default_provider() -> String {
@@ -74,6 +88,15 @@ fn default_ocr_language() -> String {
 }
 fn default_hotkey() -> String {
     "ctrl+shift+s".into()
+}
+fn default_cursor_radius() -> u32 {
+    16
+}
+fn default_cursor_opacity() -> f64 {
+    0.4
+}
+fn default_cursor_color() -> String {
+    "#ff3b30".into()
 }
 
 impl Default for ApiConfig {
@@ -107,6 +130,17 @@ impl Default for OcrConfig {
     }
 }
 
+impl Default for CursorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            radius: default_cursor_radius(),
+            opacity: default_cursor_opacity(),
+            color: default_cursor_color(),
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -114,6 +148,7 @@ impl Default for AppConfig {
             hotkey: default_hotkey(),
             cache: CacheConfig::default(),
             ocr: OcrConfig::default(),
+            cursor: CursorConfig::default(),
         }
     }
 }
@@ -181,7 +216,10 @@ pub fn set_config(
     state: tauri::State<'_, Mutex<AppConfig>>,
     config: AppConfig,
 ) -> Result<(), String> {
-    let old_hotkey = state.lock().unwrap().hotkey.clone();
+    let (old_hotkey, old_cursor) = {
+        let s = state.lock().unwrap();
+        (s.hotkey.clone(), s.cursor.clone())
+    };
     save_config(&config)?;
     let new_hotkey = config.hotkey.clone();
     *state.lock().unwrap() = config.clone();
@@ -192,5 +230,6 @@ pub fn set_config(
         crate::unregister_shortcut(&app, &old_hotkey);
         crate::register_capture_shortcut(&app, &new_hotkey).ok();
     }
+    crate::cursor::apply_config_change(&app, &old_cursor, &config.cursor);
     Ok(())
 }

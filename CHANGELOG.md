@@ -2,6 +2,12 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.4.0]
+
+### Added
+- **Cursor highlight ring** — a small translucent circle follows the mouse while the app sits in the tray, like the cursor highlight in recording tools. Settings: enable/disable, radius, opacity, color. The ring window is click-through, never takes focus, and is excluded from screen capture (`WDA_EXCLUDEFROMCAPTURE`), so it never shows up in your screenshots.
+- "AI 生成，请自行甄别" disclaimer line under answers.
+
 ## [0.3.0]
 
 ### Added

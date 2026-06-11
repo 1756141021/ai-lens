@@ -22,11 +22,13 @@ src-tauri/src/
   ocr.rs       — Windows OCR via PowerShell WinRT call
   cache.rs     — screenshot-cache cleanup (keeps newest N .png)
   config.rs    — config read/write, live hotkey re-register, Tauri commands
+  cursor.rs    — cursor highlight ring: follower thread (raw Win32 FFI) + ring window
 
 src/
   main.ts                 — routes by window label → Overlay or SettingsWindow
   windows/Overlay.svelte  — THE centerpiece: select + annotate + in-place chat (transparent overlay)
   windows/SettingsWindow.svelte — settings host
+  windows/CursorRing.svelte     — the highlight ring (one div, restyled via config-changed)
   components/Settings.svelte    — settings form (provider dropdown, model pull, advanced)
   lib/api.ts              — provider adapters, streamChat, fetchModels
   lib/chat.svelte.ts      — chat state (Svelte 5 runes)
@@ -102,6 +104,17 @@ src/
 - **OCR via PowerShell**: the `windows` crate version conflicts with xcap, so WinRT OCR is called
   through a PowerShell subprocess. Path/language are interpolated into a single-quoted PS string
   and escaped by doubling `'` (backslashes are literal in PS single-quotes — do NOT escape them).
+- **Cursor highlight ring** (`cursor.rs` + `CursorRing.svelte`): a tiny always-on-top,
+  click-through (`set_ignore_cursor_events`), `focusable(false)` window whose webview is one
+  circle div. A detached Rust thread polls `GetCursorPos` at ~125Hz and moves the window with raw
+  `SetWindowPos` (FFI, no `windows` crate — the old xcap version conflict is gone from the
+  lockfile but the no-dep policy stays). cx/cy are re-asserted every move instead of SWP_NOSIZE so
+  WM_DPICHANGED resizes self-heal when crossing mixed-DPI monitors. `content_protected(true)`
+  (tao → `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`, Win10 19041+) keeps the ring out of
+  xcap's GDI BitBlt grab — screenshots never contain it. DPI strategy: radius is config'd in
+  PHYSICAL px, the window is sized physical, the div uses 100vw/vh — no scale math anywhere.
+  Settings restyle live via the existing "config-changed" event; show/hide/resize via
+  `cursor::apply_config_change` from `set_config`.
 - **Rust module deps**: `capture → cache → config` is an acyclic shared-utility dependency (cache
   dir path, `AppConfig` for command state), not a layering violation. The Rust↔frontend boundary
   stays command/event-mediated.
@@ -129,7 +142,8 @@ The hot path used to JPEG-encode the full monitor before showing the overlay. Fi
 Key fields: `api.provider` (openai/anthropic/gemini), `api.base_url` (blank → official),
 `api.api_key`, `api.model`, `api.models` (persisted pulled model list, fills the ask-bar
 dropdown), `api.supports_vision` (true → send image incl. annotations; false → local OCR text),
-`api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`, `ocr.language`.
+`api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`, `ocr.language`,
+`cursor.{enabled,radius,opacity,color}` (highlight ring; radius in physical px).
 
 ## Running
 
@@ -162,3 +176,5 @@ Incremental Rust edits after that are seconds.
 - [x] One-click copy: whole answer + per-code-block (clipboard-manager plugin)
 - [x] Quick prompts on the input bar (解释/翻译/总结)
 - [x] Model switch from the ask bar (persisted `api.models`, in-overlay pull)
+- [x] Cursor highlight ring (click-through follower window, capture-excluded, settings-tunable)
+- [x] AI disclaimer line under answers

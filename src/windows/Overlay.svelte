@@ -578,6 +578,9 @@
           {/each}
           {#if captureError}<div class="err">{captureError}</div>{/if}
           {#if getError()}<div class="err">{getError()}</div>{/if}
+          {#if getMessages().some((m) => m.role === "assistant")}
+            <div class="aihint">AI 生成，请自行甄别</div>
+          {/if}
         </div>
       {/if}
 
@@ -708,6 +711,7 @@
   .a :global(p) { margin: 4px 0; }
   .a :global(ul), .a :global(ol) { padding-left: 18px; margin: 4px 0; }
   .err { font-size: 12px; color: #ff9b9b; }
+  .aihint { font-size: 10.5px; color: #6b7280; }
 
   .dots { display: inline-flex; gap: 4px; }
   .dots i { width: 5px; height: 5px; border-radius: 50%; background: #8b90a0; animation: b 1.2s infinite; }
