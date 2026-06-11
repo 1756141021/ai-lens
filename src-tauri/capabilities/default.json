@@ -20,6 +20,7 @@
     "global-shortcut:default",
     "shell:default",
     "clipboard-manager:allow-write-text",
+    "autostart:default",
     {
       "identifier": "http:default",
       "allow": [{ "url": "https://*:*" }, { "url": "http://*:*" }]

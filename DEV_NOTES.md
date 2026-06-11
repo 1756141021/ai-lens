@@ -178,3 +178,5 @@ Incremental Rust edits after that are seconds.
 - [x] Model switch from the ask bar (persisted `api.models`, in-overlay pull)
 - [x] Cursor highlight ring (click-through follower window, capture-excluded, settings-tunable)
 - [x] AI disclaimer line under answers
+- [x] First-run onboarding (no API key → Settings opens itself)
+- [x] 开机自启 toggle (tauri-plugin-autostart, OS-backed — not in config.json)

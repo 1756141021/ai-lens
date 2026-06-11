@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { saveConfig, type AppConfig } from "../lib/config";
   import { fetchModels } from "../lib/api";
 
@@ -48,6 +49,16 @@
 
   let saving = $state(false);
   let saveError = $state<string | null>(null);
+
+  // OS-backed, not part of AppConfig. The isEnabled() read can resolve late
+  // (hidden windows are throttled) — never let it clobber a user's click.
+  let autoStart = $state(false);
+  let autoStartTouched = false;
+  isEnabled()
+    .then((v) => {
+      if (!autoStartTouched) autoStart = v;
+    })
+    .catch(() => {});
 
   let models = $state<string[]>(init.models);
   let loadingModels = $state(false);
@@ -110,6 +121,13 @@
     };
     try {
       await saveConfig(next);
+      if (autoStartTouched) {
+        // enable/disable are idempotent — apply the user's choice directly,
+        // no stale-state comparison.
+        if (autoStart) await enable();
+        else await disable();
+        autoStartTouched = false;
+      }
       onclose();
     } catch (e: any) {
       saveError = e?.message || String(e);
@@ -174,26 +192,36 @@
     </section>
 
     <section>
-      <span class="sec">光标高亮</span>
+      <span class="sec">通用</span>
       <label class="row">
-        <input type="checkbox" bind:checked={cursorEnabled} />
-        <span>跟随鼠标显示圆圈</span>
+        <input type="checkbox" bind:checked={autoStart} onchange={() => (autoStartTouched = true)} />
+        <span>开机自动启动</span>
       </label>
-      {#if cursorEnabled}
-        <label>
-          <span class="lb">半径（px）</span>
-          <input type="number" min="4" max="64" bind:value={cursorRadius} />
-        </label>
-        <label>
-          <span class="lb">不透明度（{Math.round(cursorOpacity * 100)}%）</span>
-          <input type="range" min="0.05" max="1" step="0.05" bind:value={cursorOpacity} />
-        </label>
-        <label>
-          <span class="lb">颜色</span>
-          <input type="color" bind:value={cursorColor} />
-        </label>
-      {/if}
     </section>
+
+    <details class="adv">
+      <summary>光标高亮</summary>
+      <div class="advbody">
+        <label class="row">
+          <input type="checkbox" bind:checked={cursorEnabled} />
+          <span>跟随鼠标显示圆圈</span>
+        </label>
+        {#if cursorEnabled}
+          <label>
+            <span class="lb">半径（px）</span>
+            <input type="number" min="4" max="64" bind:value={cursorRadius} />
+          </label>
+          <label>
+            <span class="lb">不透明度（{Math.round(cursorOpacity * 100)}%）</span>
+            <input type="range" min="0.05" max="1" step="0.05" bind:value={cursorOpacity} />
+          </label>
+          <label>
+            <span class="lb">颜色</span>
+            <input type="color" bind:value={cursorColor} />
+          </label>
+        {/if}
+      </div>
+    </details>
 
     <details class="adv">
       <summary>高级</summary>

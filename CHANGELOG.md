@@ -2,6 +2,15 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.5.0]
+
+### Added
+- **First-run onboarding** — launching with no API key configured opens Settings automatically.
+- **开机自动启动** toggle in Settings (off by default, via tauri-plugin-autostart).
+
+### Changed
+- 光标高亮 settings section is collapsed by default, same style as 高级.
+
 ## [0.4.0]
 
 ### Added

@@ -98,12 +98,17 @@ fn open_settings(app: &AppHandle) {
 pub fn run() {
     let (app_config, config_error) = config::load_config();
     let hotkey_spec = app_config.hotkey.clone();
+    let needs_setup = app_config.api.api_key.trim().is_empty();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(Mutex::new(app_config))
         .manage(Mutex::new(config_error))
         .manage(Mutex::new(None::<image::RgbaImage>))
@@ -153,6 +158,11 @@ pub fn run() {
 
             cursor::build_cursor_window(&handle).ok();
             cursor::spawn_follower();
+
+            // First run (no API key yet): open Settings so the user can configure.
+            if needs_setup {
+                open_settings(&handle);
+            }
 
             Ok(())
         })
