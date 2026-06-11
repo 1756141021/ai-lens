@@ -162,6 +162,10 @@ dropdown), `api.supports_vision` (true → send image incl. annotations; false �
   (GitHub turns spaces in asset names into DOTS — the script accounts for it), and
   `gh release create` with setup.exe/.sig/.msi/latest.json. `latest.json` must be on the
   LATEST release or `releases/latest/download/latest.json` 404s (updater treats it as no-op).
+- **PITFALL — never hand-roll a release.** A manual `gh release create` without `latest.json`
+  (or with an unsigned build) silently breaks auto-update for every installed user: their tray
+  check sees nothing, or the download fails signature verification. `scripts/release.ps1` is the
+  only supported release path.
 - **MSI caveat**: auto-update always installs the NSIS payload, so MSI-installed users migrate
   to the NSIS lineage (stale entry in Add/Remove). MSI stays a manual-download option.
 - **Local E2E without publishing**: serve a fake-newer `latest.json` + signed setup.exe via
@@ -184,6 +188,15 @@ Incremental Rust edits after that are seconds.
 - Trigger the hotkey from PowerShell `keybd_event` (Ctrl+Shift+S), `SetCursorPos`/`mouse_event`
   to drag-select, then `CopyFromScreen` to screenshot the composited result (confirms the
   transparent overlay renders the dimmed live desktop + selection hole, not a black window).
+- **CDP is the reliable way to drive the UI** (physical mouse fights the human at the machine):
+  restart dev with `$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222"`,
+  list pages via `http://127.0.0.1:9222/json` (overlay/cursor/settings share the same URL —
+  identify by DOM probes), then `Runtime.evaluate` over the WebSocket: synthesize the selection
+  drag with `canvas.dispatchEvent(new MouseEvent(...))` in CSS px (no DPI math), click buttons
+  with `.click()`, read state from the DOM, and call commands via
+  `window.__TAURI_INTERNALS__.invoke(...)`. Physical-pixel automation needs
+  `SetProcessDPIAware()` first (150% scaling here) and an idle-gate (`GetLastInputInfo`) so the
+  user's mouse doesn't race the script.
 - Test an endpoint over Rust's network path with PowerShell `Invoke-RestMethod` (same network as
   the http plugin, no CORS) to tell a config error apart from a provider outage.
 

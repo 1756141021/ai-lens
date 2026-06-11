@@ -24,6 +24,8 @@
 - 在选区上画个箭头、圈个框、涂两笔再问，AI 看到的就是你画完的样子。
 - OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。
 - 纯文本模型也能用：截图先过本地 Windows OCR，变成文字再发过去。
+- 一个小色环跟着鼠标走，演示、录屏时观众一眼能跟上你的光标。半径、颜色、透明度都在设置里，截图永远拍不到它。
+- 升级不用跑 GitHub：托盘菜单会自己冒出「更新到 vX.Y.Z」，点一下，下载、验签、安装一气呵成。
 - 跑在 Windows 10/11 自带的 WebView2 上，装完约 11 MB。
 
 ### 安装
@@ -80,6 +82,8 @@ Press the hotkey and the screen dims. Drag over the thing you're curious about, 
 - Draw an arrow at the part you mean, box it, scribble on it. The AI sees exactly what you drew.
 - Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list.
 - Text-only model? The screenshot runs through Windows OCR first and arrives as text.
+- A small colored ring rides along with your cursor, so viewers can follow your pointer in demos and recordings. Radius, color and opacity sit in Settings — and it never appears in your screenshots.
+- Updates come to you: the tray menu flags a new version, and one click downloads, verifies and installs it.
 - Runs on the WebView2 already inside Windows 10/11 — install lands at ~11 MB.
 
 ### Install
