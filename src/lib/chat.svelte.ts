@@ -10,6 +10,8 @@ export interface ChatMessage {
 let messages = $state<ChatMessage[]>([]);
 let streaming = $state(false);
 let error = $state<string | null>(null);
+// Transient "正在搜索：…" line while the model uses web tools; gone once text flows.
+let toolStatus = $state<string | null>(null);
 let abortController: AbortController | null = null;
 
 export function getMessages() {
@@ -22,6 +24,10 @@ export function isStreaming() {
 
 export function getError() {
   return error;
+}
+
+export function getToolStatus() {
+  return toolStatus;
 }
 
 export function clearChat() {
@@ -74,18 +80,30 @@ export async function sendMessage(
   const assistantMsg = messages[messages.length - 1];
 
   streaming = true;
-  abortController = new AbortController();
+  const ctl = new AbortController();
+  abortController = ctl;
+  let stickyStatus = false;
 
   try {
-    for await (const token of streamChat(config, turns, abortController.signal)) {
-      assistantMsg.content += token;
+    for await (const ev of streamChat(config, turns, ctl.signal)) {
+      if (ev.type === "text") {
+        assistantMsg.content += ev.text;
+        if (!stickyStatus) toolStatus = null;
+      } else {
+        toolStatus = ev.text;
+        stickyStatus = !!ev.sticky;
+      }
     }
   } catch (e: any) {
-    if (e.name !== "AbortError") {
+    // Stop must end quietly — but the abort rejection isn't always named
+    // AbortError (plugin-http's mid-stream cancellation isn't), so check the
+    // signal, not the name.
+    if (e.name !== "AbortError" && !ctl.signal.aborted) {
       error = e.message || "Unknown error";
     }
   } finally {
     streaming = false;
+    toolStatus = null;
     abortController = null;
     // Drop the empty assistant placeholder if the stream produced nothing
     // (error or abort before the first token) — otherwise it renders as a

@@ -7,12 +7,13 @@
   import DOMPurify from "dompurify";
   import hljs from "highlight.js";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-  import { loadConfig, saveConfig, toApiConfig, type AppConfig } from "../lib/config";
+  import { loadConfig, saveConfig, toApiConfig, toApiWeb, type AppConfig } from "../lib/config";
   import { fetchModels, type ApiConfig } from "../lib/api";
   import {
     getMessages,
     isStreaming,
     getError,
+    getToolStatus,
     sendMessage,
     cancelStream,
   } from "../lib/chat.svelte";
@@ -34,6 +35,7 @@
   let menuOpen = $state(false);
   let pullingModels = $state(false);
   let pullError = $state<string | null>(null);
+  let webOn = $state(false);
 
   const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
   const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>`;
@@ -86,6 +88,17 @@
     curModel = m;
     if (apiConfig) apiConfig.model = m;
     if (config) { config.api.model = m; saveConfig(config).catch(() => {}); }
+    inputEl?.focus();
+  }
+
+  // Global switch, same in-place persistence as the model pill; the way
+  // (服务商自带 / 应用内) is chosen in Settings.
+  function toggleWeb() {
+    if (!config) return;
+    webOn = !webOn;
+    config.web = { ...config.web, enabled: webOn };
+    if (apiConfig) apiConfig.web = toApiWeb(config.web);
+    saveConfig(config).catch(() => {});
     inputEl?.focus();
   }
 
@@ -156,6 +169,13 @@
       staged = { img: e.payload.image, ocr: e.payload.ocr ?? undefined };
       inputEl?.focus();
     });
+    // Keep the 🌐 pill honest when the switch is flipped in Settings or
+    // another window. Model choice stays per-panel on purpose.
+    const unlistenCfg = listen<AppConfig>("config-changed", (e) => {
+      if (config) config.web = e.payload.web;
+      webOn = !!e.payload.web?.enabled;
+      if (apiConfig) apiConfig.web = toApiWeb(e.payload.web);
+    });
 
     (async () => {
       try {
@@ -163,6 +183,7 @@
         apiConfig = toApiConfig(config);
         curModel = config.api.model;
         modelList = config.api.models ?? [];
+        webOn = !!config.web?.enabled;
       } catch {}
 
       let seed: Seed;
@@ -188,6 +209,7 @@
     return () => {
       window.removeEventListener("keydown", onKey);
       unlisten.then((u) => u());
+      unlistenCfg.then((u) => u());
     };
   });
 </script>
@@ -224,6 +246,7 @@
         </div>
       {/if}
     {/each}
+    {#if getToolStatus()}<div class="toolstatus">{getToolStatus()}</div>{/if}
     {#if getError()}<div class="err">{getError()}</div>{/if}
     {#if getMessages().some((m) => m.role === "assistant")}
       <div class="aihint">AI 生成，请自行甄别</div>
@@ -262,6 +285,12 @@
         </div>
       {/if}
     </div>
+    <button class="webpill" class:on={webOn} title={webOn ? "联网搜索：开" : "联网搜索：关"} aria-label="联网搜索" onclick={toggleWeb}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+    </button>
     <textarea
       rows="1"
       bind:this={inputEl}
@@ -371,6 +400,11 @@
   .a :global(ul), .a :global(ol) { padding-left: 18px; margin: 4px 0; }
   .err { font-size: 12px; color: #ff9b9b; white-space: pre-line; overflow-wrap: anywhere; }
   .aihint { font-size: 10.5px; color: #6b7280; }
+  .toolstatus { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #7fa3e0; }
+  .toolstatus::before {
+    content: ""; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+    background: currentColor; animation: b 1.2s infinite;
+  }
 
   .dots { display: inline-flex; gap: 4px; }
   .dots i { width: 5px; height: 5px; border-radius: 50%; background: #8b90a0; animation: b 1.2s infinite; }
@@ -397,6 +431,15 @@
 
   .bar { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 7px 8px; }
   .model { position: relative; flex-shrink: 0; }
+  .webpill {
+    width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 7px;
+    background: rgba(255,255,255,0.06); color: #8b90a0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s;
+  }
+  .webpill:hover { background: rgba(255,255,255,0.12); color: #cdd2dc; }
+  .webpill.on { color: #5a9bff; background: rgba(58,130,246,0.16); }
+  .webpill svg { width: 14px; height: 14px; }
   .modelpill {
     max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     border: 0; border-radius: 7px; padding: 5px 9px; font-size: 11.5px; color: #8b90a0;

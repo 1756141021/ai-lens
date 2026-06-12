@@ -49,6 +49,16 @@ pub struct CursorConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_web_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub tavily_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub api: ApiConfig,
@@ -60,6 +70,8 @@ pub struct AppConfig {
     pub ocr: OcrConfig,
     #[serde(default)]
     pub cursor: CursorConfig,
+    #[serde(default)]
+    pub web: WebConfig,
 }
 
 fn default_provider() -> String {
@@ -97,6 +109,9 @@ fn default_cursor_opacity() -> f64 {
 }
 fn default_cursor_color() -> String {
     "#ff3b30".into()
+}
+fn default_web_mode() -> String {
+    "native".into()
 }
 
 impl Default for ApiConfig {
@@ -141,6 +156,16 @@ impl Default for CursorConfig {
     }
 }
 
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: default_web_mode(),
+            tavily_key: String::new(),
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -149,6 +174,7 @@ impl Default for AppConfig {
             cache: CacheConfig::default(),
             ocr: OcrConfig::default(),
             cursor: CursorConfig::default(),
+            web: WebConfig::default(),
         }
     }
 }
@@ -181,6 +207,7 @@ pub fn load_config() -> (AppConfig, Option<String>) {
         Ok(content) => match serde_json::from_str::<AppConfig>(&content) {
             Ok(mut config) => {
                 let mut notice = None;
+                let mut reseal = false;
                 if config.api.api_key.starts_with(crate::crypto::PREFIX) {
                     match crate::crypto::unprotect(&config.api.api_key) {
                         Some(plain) => config.api.api_key = plain,
@@ -196,6 +223,18 @@ pub fn load_config() -> (AppConfig, Option<String>) {
                     }
                 } else if !config.api.api_key.is_empty() {
                     // Legacy plaintext key — upgrade the on-disk copy now.
+                    reseal = true;
+                }
+                if config.web.tavily_key.starts_with(crate::crypto::PREFIX) {
+                    match crate::crypto::unprotect(&config.web.tavily_key) {
+                        Some(plain) => config.web.tavily_key = plain,
+                        // Optional key — clearing it just falls back to DuckDuckGo.
+                        None => config.web.tavily_key = String::new(),
+                    }
+                } else if !config.web.tavily_key.is_empty() {
+                    reseal = true;
+                }
+                if reseal {
                     save_config(&config).ok();
                 }
                 (config, notice)
@@ -222,6 +261,13 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
     if !on_disk.api.api_key.is_empty() && !on_disk.api.api_key.starts_with(crate::crypto::PREFIX) {
         if let Some(sealed) = crate::crypto::protect(&on_disk.api.api_key) {
             on_disk.api.api_key = sealed;
+        }
+    }
+    if !on_disk.web.tavily_key.is_empty()
+        && !on_disk.web.tavily_key.starts_with(crate::crypto::PREFIX)
+    {
+        if let Some(sealed) = crate::crypto::protect(&on_disk.web.tavily_key) {
+            on_disk.web.tavily_key = sealed;
         }
     }
     let content = serde_json::to_string_pretty(&on_disk).map_err(|e| e.to_string())?;

@@ -26,6 +26,7 @@
 - OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。用的是你自己的 AI 账号额度，不经过任何中间服务器，API Key 在本机加密保存。
 - 纯文本模型也能用：截图先过本地 Windows OCR，变成文字再发过去。
 - 框住一段抠不出来的文字，点一下取字，文字就在剪贴板里了——全程本地 OCR，不走网络。
+- 可选的联网搜索（默认关闭）：打开后 AI 能查网页再回答。优先用服务商自带的联网（Claude / Gemini / OpenRouter）；其他服务商可在设置里切到应用内搜索（必应/Tavily），AI 搜了什么、读了哪个网页全程实时显示，本机和内网地址禁止访问。
 - 框好的区域（连同你画的标注）可以一键钉在屏幕上：随手拖、滚轮缩放、要几个钉几个。
 - 一个小色环跟着鼠标走，演示、录屏时观众一眼能跟上你的光标。半径、颜色、透明度都在设置里，截图永远拍不到它。
 - 升级不用跑 GitHub：托盘菜单会自己冒出「更新到 vX.Y.Z」，点一下，下载、验签、安装一气呵成。
@@ -98,6 +99,7 @@ Press the hotkey and the screen dims. Drag over the thing you're curious about, 
 - Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list. It uses your own AI account's quota — nothing routes through a middleman server, and your API key is stored encrypted on your machine.
 - Text-only model? The screenshot runs through Windows OCR first and arrives as text.
 - Frame some un-copyable text and hit the OCR button — it lands in your clipboard, fully local, nothing leaves the machine.
+- Optional web search (off by default): let the AI look things up before answering. Provider-native search where available (Claude / Gemini / OpenRouter), or an in-app mode (Bing/Tavily) for everyone else — every search and page read is shown live, and local/LAN addresses are blocked.
 - Pin the selection (your annotations included) right where it sits: drag it around, zoom with the wheel, pin as many as you like.
 - A small colored ring rides along with your cursor, so viewers can follow your pointer in demos and recordings. Radius, color and opacity sit in Settings — and it never appears in your screenshots.
 - Updates come to you: the tray menu flags a new version, and one click downloads, verifies and installs it.

@@ -2,6 +2,21 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.11.0]
+
+### Added
+- **联网搜索（可选，默认关闭）** — the model can now search the web and read pages. Two ways, picked in Settings → 联网搜索:
+  - **服务商自带（推荐）** — the search runs on the provider's side: Anthropic (`web_search` server tool), Google Gemini (Search grounding), OpenRouter (`openrouter:web_search` server tool), and OpenAI's `-search-preview` models. Other OpenAI-compatible endpoints depend on the relay — if it errors or does nothing, switch to app mode. Providers may bill searches separately.
+  - **应用内搜索（备选）** — AI Lens runs the tools itself via function calling (`web_search` + `fetch_url`), so any OpenAI-compatible endpoint with tool-call support works. Search uses Bing (no key needed, DuckDuckGo as fallback) or Tavily if you add a key in Settings (stored DPAPI-encrypted like the API key). Page fetches are capped (15s / ~8k chars), and local/LAN addresses are refused.
+- **🌐 toggle in the ask bar** (overlay and every chat window) — same switch as Settings, one click to turn web access on/off; the choice persists.
+- **Live action line** — while the model searches or reads a page, the answer area shows what it's doing („正在搜索：…“, „正在读取：…“); nothing runs invisibly.
+
+### Security
+- App-mode web access is opt-in and spelled out in Settings: the model can request arbitrary public URLs (a screenshotted page could try to steer it), fetched content is untrusted, every action is shown live, and localhost/LAN targets are blocked.
+
+### Fixed
+- Pressing **Stop** mid-stream no longer surfaces a spurious "Unknown error" — the cancellation race existed since 0.7.0; the abort is now detected by signal, not by error name.
+
 ## [0.10.0]
 
 ### Added

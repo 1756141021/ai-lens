@@ -31,6 +31,9 @@
     cursorRadius: config.cursor?.radius ?? 16,
     cursorOpacity: config.cursor?.opacity ?? 0.4,
     cursorColor: config.cursor?.color ?? "#ff3b30",
+    webEnabled: config.web?.enabled ?? false,
+    webMode: config.web?.mode === "app" ? "app" : "native",
+    tavilyKey: config.web?.tavily_key ?? "",
   }));
 
   let provider = $state(init.provider);
@@ -47,6 +50,9 @@
   let cursorRadius = $state(init.cursorRadius);
   let cursorOpacity = $state(init.cursorOpacity);
   let cursorColor = $state(init.cursorColor);
+  let webEnabled = $state(init.webEnabled);
+  let webMode = $state(init.webMode);
+  let tavilyKey = $state(init.tavilyKey);
 
   let saving = $state(false);
   let saveError = $state<string | null>(null);
@@ -137,6 +143,7 @@
         opacity: Math.max(0.05, Math.min(1, Number(cursorOpacity) || 0.4)),
         color: /^#[0-9a-fA-F]{6}$/.test(cursorColor) ? cursorColor : "#ff3b30",
       },
+      web: { enabled: webEnabled, mode: webMode, tavily_key: tavilyKey.trim() },
     };
     try {
       await saveConfig(next);
@@ -230,6 +237,51 @@
         <span>开机自动启动</span>
       </label>
     </section>
+
+    <details class="adv" open={webEnabled}>
+      <summary>联网搜索</summary>
+      <div class="advbody">
+        <label class="row">
+          <input type="checkbox" bind:checked={webEnabled} />
+          <span>允许 AI 联网（搜索 / 读网页）</span>
+        </label>
+        <span class="hint">提问输入框旁的 🌐 按钮是同一个开关，随手可切。默认关闭。</span>
+        {#if webEnabled}
+          <label>
+            <span class="lb">联网方式</span>
+            <select bind:value={webMode}>
+              <option value="native">服务商自带（需 API 源开放联网）</option>
+              <option value="app">应用内搜索（不依赖 API 源）</option>
+            </select>
+          </label>
+          {#if webMode === "native"}
+            <span class="hint">
+              能不能搜，取决于你的 API 源有没有开放联网：<b>Anthropic（Claude）</b>、<b>Google Gemini</b>、
+              <b>OpenRouter</b> 官方都支持；其他 OpenAI 兼容端点（中转站等）多数不支持——表现为报错，或者当没听见、答不出实时内容。
+              源不支持就换「应用内搜索」，那条不依赖 API 源。部分服务商对联网搜索单独计费。
+            </span>
+          {:else}
+            <span class="hint">
+              由 AI Lens 代替模型执行搜索和读网页，结果喂回模型。任何支持 function calling 的
+              OpenAI 兼容服务商都能用（Anthropic / Gemini 请直接用「服务商自带」）。
+            </span>
+            <span class="hint warn">
+              使用前要知道的：模型可以请求访问<b>任意公网网址</b>——截图里若藏有恶意指令，理论上能诱导它打开特定链接；
+              读到的网页内容不一定可信。所有搜索和读取动作都会实时显示在回答上方，本机与内网地址已禁止访问。
+            </span>
+            <label>
+              <span class="lb">Tavily API Key（可选）</span>
+              <input type="password" bind:value={tavilyKey} placeholder="留空用必应搜索" spellcheck="false" />
+              <span class="hint">
+                留空用必应（免注册，失败时自动换 DuckDuckGo）。想更稳可以到
+                <button type="button" class="lnk" onclick={() => openUrl("https://app.tavily.com/home")}>Tavily</button>
+                免费注册一个 Key（每月有免费额度）。Key 同样加密存储。
+              </span>
+            </label>
+          {/if}
+        {/if}
+      </div>
+    </details>
 
     <details class="adv">
       <summary>光标高亮</summary>
@@ -340,6 +392,14 @@
   .hint { font-size: 11px; color: #6b7280; line-height: 1.55; }
   .hint b { color: #aeb4c0; font-weight: 600; }
   .hint.err { color: #ff9b9b; white-space: pre-line; overflow-wrap: anywhere; }
+  .hint.warn {
+    color: #d9b079;
+    padding: 8px 10px;
+    background: rgba(217, 176, 121, 0.08);
+    border: 1px solid rgba(217, 176, 121, 0.2);
+    border-radius: 8px;
+  }
+  .hint.warn b { color: #ecc78f; }
 
   .lnk {
     background: none;

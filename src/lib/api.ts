@@ -1,6 +1,7 @@
 // Tauri's HTTP plugin routes requests through Rust, bypassing the webview's CORS
 // (raw browser fetch to LLM APIs gets blocked → opaque "Failed to fetch").
 import { fetch } from "@tauri-apps/plugin-http";
+import { webSearch, fetchUrl } from "./webtools";
 
 export type Provider = "openai" | "anthropic" | "gemini";
 
@@ -12,6 +13,8 @@ export interface ApiConfig {
   supportsVision: boolean;
   authHeader: string;
   apiVersion: string;
+  /** Present only when 联网搜索 is enabled in Settings. */
+  web?: { mode: "native" | "app"; tavilyKey: string };
 }
 
 /** A neutral conversation turn. Adapters convert these into each provider's wire
@@ -109,11 +112,17 @@ function openaiRequest(config: ApiConfig, turns: ChatTurn[]): Request {
       t.role === "user" && t.ocrText ? `[Image OCR text]:\n${t.ocrText}\n\n${t.text}` : t.text;
     return { role: t.role, content };
   });
-  return {
-    url: openaiUrl(config),
-    headers: openaiHeaders(config),
-    body: { model: config.model, messages, stream: true },
-  };
+  const body: Record<string, unknown> = { model: config.model, messages, stream: true };
+  if (config.web?.mode === "native") {
+    // OpenRouter has a first-class server tool (the old plugins/:online forms
+    // are deprecated); elsewhere the only chat-completions-level switch is
+    // web_search_options (OpenAI's -search-preview models). Endpoints that
+    // support neither will 400 or silently ignore it — Settings copy steers
+    // those users to app mode.
+    if (/openrouter/i.test(config.baseUrl)) body.tools = [{ type: "openrouter:web_search" }];
+    else body.web_search_options = {};
+  }
+  return { url: openaiUrl(config), headers: openaiHeaders(config), body };
 }
 
 // ---------- Anthropic (native Messages API) ----------
@@ -136,6 +145,17 @@ function anthropicRequest(config: ApiConfig, turns: ChatTurn[]): Request {
     return { role: t.role, content: text };
   });
 
+  const body: Record<string, unknown> = {
+    model: config.model,
+    max_tokens: 4096,
+    stream: true,
+    messages,
+  };
+  if (config.web?.mode === "native") {
+    // Server-side tool: Anthropic runs the searches, results stream back inline.
+    body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }];
+  }
+
   return {
     url,
     headers: {
@@ -145,7 +165,7 @@ function anthropicRequest(config: ApiConfig, turns: ChatTurn[]): Request {
       // webview origin is a browser context; Anthropic blocks it without this.
       "anthropic-dangerous-direct-browser-access": "true",
     },
-    body: { model: config.model, max_tokens: 4096, stream: true, messages },
+    body,
   };
 }
 
@@ -165,23 +185,57 @@ function geminiRequest(config: ApiConfig, turns: ChatTurn[]): Request {
     return { role: t.role === "assistant" ? "model" : "user", parts };
   });
 
+  const body: Record<string, unknown> = { contents };
+  // Google Search grounding — Gemini searches server-side, text streams as usual.
+  if (config.web?.mode === "native") body.tools = [{ google_search: {} }];
+
   return {
     url,
     headers: { "Content-Type": "application/json", "x-goog-api-key": config.apiKey },
-    body: { contents },
+    body,
   };
 }
 
-// ---------- token extraction per provider ----------
+// ---------- streaming events ----------
 
-function extractToken(provider: Provider, json: any): string | null {
+/** What streamChat yields: answer text, or a status line ("正在搜索：…") so
+ *  the user always sees what the model is doing. Transient statuses clear as
+ *  soon as text flows; sticky ones stay until the stream ends (Gemini sends
+ *  its searched-queries metadata alongside the text, not before it). */
+export type StreamEvent =
+  | { type: "text"; text: string }
+  | { type: "status"; text: string; sticky?: boolean };
+
+function extractEvents(provider: Provider, json: any): StreamEvent[] {
   switch (provider) {
-    case "anthropic":
-      return json.type === "content_block_delta" ? json.delta?.text ?? null : null;
-    case "gemini":
-      return json.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
-    default:
-      return json.choices?.[0]?.delta?.content ?? null;
+    case "anthropic": {
+      if (json.type === "content_block_delta") {
+        const t = json.delta?.text;
+        return t ? [{ type: "text", text: t }] : [];
+      }
+      // Server-side web search shows up as extra content blocks around the text.
+      if (json.type === "content_block_start") {
+        const bt = json.content_block?.type;
+        if (bt === "server_tool_use") return [{ type: "status", text: "正在搜索网页…" }];
+        if (bt === "web_search_tool_result")
+          return [{ type: "status", text: "已拿到搜索结果，正在阅读…" }];
+      }
+      return [];
+    }
+    case "gemini": {
+      const out: StreamEvent[] = [];
+      const cand = json.candidates?.[0];
+      const queries = cand?.groundingMetadata?.webSearchQueries;
+      if (Array.isArray(queries) && queries.length)
+        out.push({ type: "status", text: `已搜索：${queries.join("、")}`, sticky: true });
+      const t = cand?.content?.parts?.[0]?.text;
+      if (t) out.push({ type: "text", text: t });
+      return out;
+    }
+    default: {
+      const t = json.choices?.[0]?.delta?.content;
+      return t ? [{ type: "text", text: t }] : [];
+    }
   }
 }
 
@@ -234,13 +288,12 @@ export async function fetchModels(config: ApiConfig): Promise<string[]> {
   return [...new Set(ids.filter(Boolean))].sort();
 }
 
-export async function* streamChat(
-  config: ApiConfig,
-  turns: ChatTurn[],
+async function doFetch(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
   signal?: AbortSignal,
-): AsyncGenerator<string> {
-  const { url, headers, body } = buildRequest(config, turns);
-
+): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -253,11 +306,13 @@ export async function* streamChat(
     if (e?.name === "AbortError") throw e;
     throw new Error(`连接失败：${e?.message || e}\n接口：${url}\n（检查接口地址 / API Key / 网络）`);
   }
-
   if (!response.ok) {
     throw new Error(humanizeHttpError(response.status, await response.text(), url));
   }
+  return response;
+}
 
+async function* readSse(response: Response): AsyncGenerator<any> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
 
@@ -276,14 +331,154 @@ export async function* streamChat(
       const trimmed = line.trim();
       if (!trimmed || trimmed === "data: [DONE]") continue;
       if (!trimmed.startsWith("data: ")) continue; // skips SSE `event:` lines too
-
       try {
-        const json = JSON.parse(trimmed.slice(6));
-        const token = extractToken(config.provider, json);
-        if (token) yield token;
+        yield JSON.parse(trimmed.slice(6));
       } catch {
         // skip malformed lines
       }
     }
+  }
+}
+
+// ---------- app-level tool loop (应用内联网, OpenAI-compatible only) ----------
+
+const TOOL_DEFS = [
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description:
+        "Search the web. Returns the top results as titles, URLs and snippets. Use fetch_url to read a result in full.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "The search query" } },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "fetch_url",
+      description: "Fetch a public web page and return its readable text content.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string", description: "Absolute http(s) URL" } },
+        required: ["url"],
+      },
+    },
+  },
+];
+
+const MAX_TOOL_ROUNDS = 4;
+
+/** Function-calling loop: stream → model requests a tool → run it locally →
+ *  append the result → stream again. Tool exchanges live only inside this
+ *  call; conversation history keeps just the final question/answer turns. */
+async function* streamOpenaiTools(
+  config: ApiConfig,
+  turns: ChatTurn[],
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  const base = openaiRequest(config, turns);
+  const messages = (base.body as { messages: unknown[] }).messages;
+  let wroteText = false;
+
+  for (let round = 0; ; round++) {
+    const final = round >= MAX_TOOL_ROUNDS; // budget spent — force an answer
+    const body = {
+      ...(base.body as object),
+      messages,
+      tools: TOOL_DEFS,
+      tool_choice: final ? "none" : "auto",
+    };
+
+    const response = await doFetch(base.url, base.headers, body, signal);
+    const calls: { id: string; name: string; args: string }[] = [];
+    let text = "";
+
+    for await (const json of readSse(response)) {
+      const delta = json.choices?.[0]?.delta;
+      if (!delta) continue;
+      if (delta.content) {
+        // Blank line between pre-tool commentary and the post-tool answer.
+        if (wroteText && !text) yield { type: "text", text: "\n\n" };
+        text += delta.content;
+        wroteText = true;
+        yield { type: "text", text: delta.content };
+      }
+      // tool_calls stream in fragments: id/name first, arguments split across
+      // many deltas — accumulate by index.
+      for (const tc of delta.tool_calls ?? []) {
+        const slot = (calls[tc.index ?? 0] ??= { id: "", name: "", args: "" });
+        if (tc.id) slot.id = tc.id;
+        if (tc.function?.name) slot.name += tc.function.name;
+        if (tc.function?.arguments) slot.args += tc.function.arguments;
+      }
+    }
+
+    const live = calls.filter(Boolean);
+    if (!live.length || final) return;
+    live.forEach((c, i) => {
+      if (!c.id) c.id = `call_${round}_${i}`; // some relays omit ids
+    });
+
+    messages.push({
+      role: "assistant",
+      content: text || null,
+      tool_calls: live.map((c) => ({
+        id: c.id,
+        type: "function",
+        function: { name: c.name, arguments: c.args },
+      })),
+    });
+
+    for (const c of live) {
+      let args: any = {};
+      try {
+        args = JSON.parse(c.args || "{}");
+      } catch {
+        // leave args empty — the executor reports the bad input back to the model
+      }
+      let result: string;
+      if (c.name === "web_search") {
+        const q = String(args.query ?? "");
+        yield { type: "status", text: `正在搜索：${q}` };
+        result = await webSearch(q, config.web?.tavilyKey || "", signal);
+      } else if (c.name === "fetch_url") {
+        const raw = String(args.url ?? "");
+        let host = raw;
+        try {
+          host = new URL(raw).hostname;
+        } catch {
+          // not a URL — fetchUrl will say so in its result
+        }
+        yield { type: "status", text: `正在读取：${host}` };
+        result = await fetchUrl(raw, signal);
+      } else {
+        result = `未知工具：${c.name}`;
+      }
+      messages.push({ role: "tool", tool_call_id: c.id, content: result });
+    }
+    yield { type: "status", text: "正在整理…" };
+  }
+}
+
+export async function* streamChat(
+  config: ApiConfig,
+  turns: ChatTurn[],
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  // App-level web tools only exist for OpenAI-compatible endpoints; Anthropic
+  // and Gemini users get the (better) provider-native search instead.
+  if (config.provider === "openai" && config.web?.mode === "app") {
+    yield* streamOpenaiTools(config, turns, signal);
+    return;
+  }
+
+  const { url, headers, body } = buildRequest(config, turns);
+  const response = await doFetch(url, headers, body, signal);
+  for await (const json of readSse(response)) {
+    yield* extractEvents(config.provider, json);
   }
 }

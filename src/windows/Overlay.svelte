@@ -4,7 +4,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-  import { loadConfig, saveConfig, toApiConfig, type AppConfig } from "../lib/config";
+  import { loadConfig, saveConfig, toApiConfig, toApiWeb, type AppConfig } from "../lib/config";
   import { fetchModels, type ApiConfig } from "../lib/api";
 
   type Meta = {
@@ -60,6 +60,7 @@
   let menuOpen = $state(false);
   let pullingModels = $state(false);
   let pullError = $state<string | null>(null);
+  let webOn = $state(false);
 
   const PRESETS = [
     { label: "解释", text: "解释这块内容" },
@@ -115,6 +116,7 @@
       apiConfig = toApiConfig(config);
       curModel = config.api.model;
       modelList = config.api.models ?? [];
+      webOn = !!config.web?.enabled;
     } catch {}
 
     const m = await invoke<Meta | null>("get_capture_meta");
@@ -643,6 +645,15 @@
     inputEl?.focus();
   }
 
+  function toggleWeb() {
+    if (!config) return;
+    webOn = !webOn;
+    config.web = { ...config.web, enabled: webOn };
+    if (apiConfig) apiConfig.web = toApiWeb(config.web);
+    saveConfig(config).catch(() => {});
+    inputEl?.focus();
+  }
+
   async function pullModelsLive() {
     if (!apiConfig) return;
     pullingModels = true;
@@ -797,6 +808,12 @@
             </div>
           {/if}
         </div>
+        <button class="webpill" class:on={webOn} title={webOn ? "联网搜索：开" : "联网搜索：关"} aria-label="联网搜索" onclick={toggleWeb}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        </button>
         <textarea
           rows="1"
           bind:this={inputEl}
@@ -917,6 +934,15 @@
   .mi.on { color: #3a82f6; }
   .mi:disabled { opacity: 0.5; cursor: default; }
   .mierr { font-size: 11px; color: #ff9b9b; padding: 5px 10px; white-space: pre-line; overflow-wrap: anywhere; }
+  .webpill {
+    width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 7px;
+    background: rgba(255,255,255,0.06); color: #8b90a0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s;
+  }
+  .webpill:hover { background: rgba(255,255,255,0.12); color: #cdd2dc; }
+  .webpill.on { color: #5a9bff; background: rgba(58,130,246,0.16); }
+  .webpill svg { width: 14px; height: 14px; }
 
   .bar { display: flex; align-items: center; gap: 10px; padding: 11px 12px 11px 12px; }
   .bar textarea {

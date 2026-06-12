@@ -35,8 +35,9 @@ src/
   windows/CursorRing.svelte     — the highlight ring (one div, restyled via config-changed)
   windows/PinWindow.svelte      — pinned screenshot (img + drag + wheel zoom + hover-✕)
   components/Settings.svelte    — settings form (provider dropdown, model pull, advanced)
-  lib/api.ts              — provider adapters, streamChat, fetchModels
+  lib/api.ts              — provider adapters, streamChat (StreamEvent), web modes, fetchModels
   lib/chat.svelte.ts      — chat state (Svelte 5 runes)
+  lib/webtools.ts         — app-mode web tools: search chain (Tavily/Bing RSS/DDG) + fetchUrl
   lib/config.ts           — config bridge to Rust
 ```
 
@@ -56,6 +57,36 @@ src/
 
 ## Architecture Decisions
 
+- **联网搜索 (0.11.0) — two modes, one event stream.** `streamChat` yields `StreamEvent`
+  (`{type:"text"}` | `{type:"status", sticky?}`) instead of bare tokens; status lines render as a
+  transient `.toolstatus` row in ChatPanel (text clears non-sticky status; Gemini's 已搜索 is
+  sticky because its metadata arrives WITH the text, not before).
+  - **native mode** = request-body injection per provider: Anthropic
+    `tools:[{type:"web_search_20250305",name:"web_search",max_uses:5}]` (server streams
+    `server_tool_use`/`web_search_tool_result` blocks → status lines; `pause_turn` continuation
+    NOT implemented — a very long server-side search may end the turn early), Gemini
+    `tools:[{google_search:{}}]` (groundingMetadata.webSearchQueries → sticky status), OpenRouter
+    `tools:[{type:"openrouter:web_search"}]` (the plugins/`:online` forms are deprecated), other
+    OAI endpoints `web_search_options:{}` (only OpenAI's -search-preview models honor it; relays
+    may 400 or ignore — Settings copy steers those to app mode).
+  - **app mode** (OpenAI-compatible only) = `streamOpenaiTools` function-calling loop:
+    accumulate `delta.tool_calls` fragments by index → execute locally (webtools.ts) → append
+    assistant(tool_calls) + role:"tool" messages at WIRE level (neutral ChatTurn[] stays clean;
+    tool exchanges are NOT persisted into history — deliberate) → re-POST. 4 rounds max, then a
+    forced `tool_choice:"none"` answer round. AbortSignal threads through every fetch and tool.
+  - **Search chain** (no Tavily key): **Bing RSS** (`/search?format=rss` — stable XML, no bot
+    challenge) → DDG HTML fallback → combined error string AS the tool result (the model reads
+    the failure and reacts; only user Stop aborts). Chain order is empirical: through the user's
+    system proxy (Clash 127.0.0.1:7897 — reqwest/plugin-http honors it), DDG's HTML endpoint
+    answers 202 anomaly challenges and Bing's HTML is a JS shell, but Bing RSS serves clean
+    results. Tavily key (DPAPI-sealed like the API key) switches the whole search to Tavily.
+  - **fetchUrl guard**: http(s) only, literal private-host blocklist (localhost/127/10/172.16-31/
+    192.168/169.254/::1/fe80/.local) — DNS-rebinding is consciously out of scope (single-user
+    desktop tool, every action shown live in the UI); 15s timeout, content-type allowlist,
+    ~8k-char clip, DOMParser strip (article/main preferred). User-facing risk copy lives in
+    Settings' 应用内 mode hint.
+  - 🌐 pill in both ask bars toggles `web.enabled` and persists via the model-pill precedent;
+    ChatPanel syncs it from `config-changed` (model choice intentionally stays per-panel).
 - **Parallel conversations = one window each (0.10.0).** The overlay used to morph into the single
   chat panel (select → ask → detached, same window), so a new capture had to discard the old
   conversation. Now the overlay is purely capture/compose; on send it `spawn_chat`s an independent
@@ -203,7 +234,8 @@ Key fields: `api.provider` (openai/anthropic/gemini), `api.base_url` (blank → 
 `api.api_key`, `api.model`, `api.models` (persisted pulled model list, fills the ask-bar
 dropdown), `api.supports_vision` (true → send image incl. annotations; false → local OCR text),
 `api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`, `ocr.language`,
-`cursor.{enabled,radius,opacity,color}` (highlight ring; radius in physical px).
+`cursor.{enabled,radius,opacity,color}` (highlight ring; radius in physical px),
+`web.{enabled,mode,tavily_key}` (联网搜索; mode `native`/`app`; tavily_key DPAPI-sealed on disk).
 
 ## Security (0.9.0 hardening)
 
@@ -300,6 +332,20 @@ Incremental Rust edits after that are seconds.
   user's mouse doesn't race the script.
 - Test an endpoint over Rust's network path with PowerShell `Invoke-RestMethod` (same network as
   the http plugin, no CORS) to tell a config error apart from a provider outage.
+- **PITFALL — CDP kills runtime-spawned windows (WebView2 149).** With
+  `--remote-debugging-port` attached, windows created at RUNTIME (`chat-N`, presumably `pin-N`)
+  get destroyed spontaneously after a variable 0.7s–36s+ delay — cleanly (Destroyed fires, no
+  crash, no JS error), on the STOCK 0.10.0 binary too. Startup-created windows
+  (overlay/settings/ring) are immune. WITHOUT the debug port the same build is rock-stable
+  (90s+ under real input) — zero user impact, purely a verification hazard. Workarounds: assert
+  protocol-level facts from the mock's request dumps (survive window death), use ONE persistent
+  WebSocket per window for DOM reads (one-shot attach/detach cycles correlate with faster
+  deaths), and treat "no page found" mid-scenario as a harness artifact → respawn and retry.
+- The mock LLM for web-tools testing lives at `%TEMP%\ailens-verify\mock3.ps1` (port 18932):
+  `/echo` streams the request-body keys back (regression: web off ⇒ no tools field), `/tools`,
+  `/toolfetch`, `/toolssrf` emit split tool_call fragments then echo the tool result on round 2
+  (dumped to `<route>-last.json`), `/native-claude` + `/native-gemini` replay provider-native
+  search streams, `/slowtools` is the Stop-button target.
 
 ## Status
 
@@ -325,3 +371,7 @@ Incremental Rust edits after that are seconds.
 - [x] 0.9.0 hardening: DOMPurify on model output, CSP, DPAPI-sealed API key (see Security)
 - [x] 0.9.0 onboarding: humanized API errors, per-provider key links + first-run banner in
       Settings, README SmartScreen note + key walkthrough (from the three-persona review)
+- [x] 0.10.0 parallel conversations: one independent window per chat, 追加 target picker,
+      draggable selection box
+- [x] 0.11.0 联网搜索: provider-native (Anthropic/Gemini/OpenRouter) + app-level tool loop
+      (Bing RSS/DDG/Tavily + fetch_url with SSRF guard), 🌐 toggle, live action line
