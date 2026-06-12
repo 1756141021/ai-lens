@@ -23,12 +23,14 @@ src-tauri/src/
   cache.rs     — screenshot-cache cleanup (keeps newest N .png)
   config.rs    — config read/write, live hotkey re-register, Tauri commands
   cursor.rs    — cursor highlight ring: follower thread (raw Win32 FFI) + ring window
+  pin.rs       — pinned screenshots: in-memory PinStore + pin window creation
 
 src/
   main.ts                 — routes by window label → Overlay or SettingsWindow
   windows/Overlay.svelte  — THE centerpiece: select + annotate + in-place chat (transparent overlay)
   windows/SettingsWindow.svelte — settings host
   windows/CursorRing.svelte     — the highlight ring (one div, restyled via config-changed)
+  windows/PinWindow.svelte      — pinned screenshot (img + drag + wheel zoom + hover-✕)
   components/Settings.svelte    — settings form (provider dropdown, model pull, advanced)
   lib/api.ts              — provider adapters, streamChat, fetchModels
   lib/chat.svelte.ts      — chat state (Svelte 5 runes)
@@ -79,7 +81,22 @@ src/
   Right-click-to-hide dies naturally (handler lives on the hidden canvas) — which also enables
   right-click text copy in the panel. No focus calls in the detach path: the input keeps DOM
   focus for an immediate follow-up, and nothing reclaims foreground after the user clicks away.
-- **Copy via clipboard-manager plugin**: answer + per-code-block copy buttons. WebView2 routes
+- **取字 + 钉图 (pin.rs / PinWindow.svelte)**: 取字 reuses capture_region's PNG path → async
+  `ocr_image` → clipboard (the command went async because a sync command runs on the MAIN thread
+  — WebView2 raises IPC there — and the 1-2s PowerShell froze every window). 钉图 holds the
+  image base64 in an in-memory `PinStore` keyed by window label (NOT a cache path —
+  `cache::cleanup` can't delete the file under a pin), one `pin-{n}` window per pin, cleaned up
+  on `WindowEvent::Destroyed`. **Window creation from commands — hard-won rules**: a SYNC
+  command must NEVER build a webview window — it executes inside the WebView2 IPC handler and
+  re-enters the message loop; the IPC response never returns and every later invoke from the
+  calling window hangs (looked like "Esc/right-click are dead"). An async command building
+  directly from the tokio pool ALSO hung silently in practice (despite source-reading suggesting
+  the proxy enqueue is fine). The only pattern that works: **async command +
+  `run_on_main_thread`** with an mpsc channel for the result (pin.rs) — same hop run_capture
+  uses. Pin page: `data-tauri-drag-region="deep"` makes any descendant
+  drag the window while BUTTONs are exempt automatically (drag.js isClickableElement) — the
+  hover-✕ needs no pointer-events tricks. 1:1 sizing = physical position/size post-build +
+  img at 100vw/vh; wheel zoom rescales the window (0.25–3×) from the stored physical dims. answer + per-code-block copy buttons. WebView2 routes
   `navigator.clipboard` through a PermissionRequested event Tauri doesn't auto-grant, so writes go
   through `tauri-plugin-clipboard-manager` (capability `clipboard-manager:allow-write-text`).
   Code blocks are `{@html}` markup — Svelte can't bind events inside, so the marked code renderer
@@ -232,3 +249,5 @@ Incremental Rust edits after that are seconds.
 - [x] 开机自启 toggle (tauri-plugin-autostart, OS-backed — not in config.json)
 - [x] In-app auto-update (tray menu, signed GitHub Releases, see Auto-update & releases)
 - [x] Detach-on-send: answer streams in a draggable floating panel, desktop stays usable
+- [x] 取字: selection → local OCR → clipboard, one click
+- [x] 钉图: pin the (annotated) selection 1:1 on screen — drag / wheel zoom / multi-pin

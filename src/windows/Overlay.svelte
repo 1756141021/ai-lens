@@ -47,6 +47,10 @@
 
   let imageBase64: string | undefined;
   let ocrText: string | undefined;
+  let cropPath: string | undefined;
+  let cropW = 0, cropH = 0;
+  let ocrState = $state<"idle" | "busy" | "ok" | "fail">("idle");
+  let pinBusy = $state(false);
   let capturePromise: Promise<void> | null = null;
   let captureError = $state<string | null>(null);
   let text = $state("");
@@ -83,6 +87,8 @@
   const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
   const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>`;
   const FAIL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+  const OCR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="14" y2="13"/><line x1="7" y1="17" x2="12" y2="17"/></svg>`;
+  const PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 11V6.8a1 1 0 0 1 .4-.8l1-.7a1 1 0 0 0 .4-.8V4h2.4v.5a1 1 0 0 0 .4.8l1 .7a1 1 0 0 1 .4.8V11l2.3 1.9a1 1 0 0 1-.6 1.8H7.3a1 1 0 0 1-.6-1.8L9 11z"/></svg>`;
 
   const marked = new Marked({
     renderer: {
@@ -159,6 +165,11 @@
     dragging = false;
     imageBase64 = undefined;
     ocrText = undefined;
+    cropPath = undefined;
+    cropW = 0;
+    cropH = 0;
+    ocrState = "idle";
+    pinBusy = false;
     capturePromise = null;
     captureError = null;
     text = "";
@@ -404,10 +415,13 @@
     // for the image instead of sending the first question text-only.
     capturePromise = (async () => {
       try {
-        const r = await invoke<{ path: string; base64: string }>("capture_region", {
+        const r = await invoke<{ path: string; base64: string; width: number; height: number }>("capture_region", {
           x: region.x, y: region.y, width: region.w, height: region.h,
         });
         imageBase64 = r.base64;
+        cropPath = r.path;
+        cropW = r.width;
+        cropH = r.height;
         if (config && !config.api.supports_vision) {
           try {
             ocrText = await invoke<string>("ocr_image", { path: r.path, language: config.ocr.language });
@@ -492,6 +506,51 @@
 
   function onInputKey(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+  }
+
+  async function grabText() {
+    if (ocrState === "busy" || !config) return;
+    ocrState = "busy";
+    try {
+      if (capturePromise) await capturePromise;
+      if (!cropPath) {
+        ocrState = "fail";
+      } else {
+        const t = (await invoke<string>("ocr_image", { path: cropPath, language: config.ocr.language })).trim();
+        ocrState = t && (await copyText(t)) ? "ok" : "fail";
+      }
+    } catch {
+      ocrState = "fail";
+    }
+    setTimeout(() => {
+      if (ocrState !== "busy") ocrState = "idle";
+    }, 1200);
+  }
+
+  async function pinIt() {
+    if (pinBusy || !meta || !selRect) return;
+    pinBusy = true;
+    try {
+      if (capturePromise) await capturePromise;
+      if (!imageBase64) return; // crop failed — captureError already shows
+      let img = imageBase64;
+      if (shapes.length) {
+        const baked = await composite();
+        if (baked) img = baked;
+      }
+      await invoke("pin_image", {
+        base64: img,
+        x: meta.originX + region.x,
+        y: meta.originY + region.y,
+        width: cropW || region.w,
+        height: cropH || region.h,
+      });
+      getCurrentWindow().hide(); // pinning ends the capture, like Esc
+    } catch (e: any) {
+      captureError = `钉图失败：${e?.message ?? e}`;
+    } finally {
+      pinBusy = false;
+    }
   }
 
   function pickModel(m: string) {
@@ -618,6 +677,13 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/>
           </svg>
+        </button>
+        <span class="sep"></span>
+        <button class="tl" title="取字（OCR 到剪贴板）" onclick={grabText} disabled={ocrState === "busy"}>
+          {#if ocrState === "ok"}{@html CHECK_SVG}{:else if ocrState === "fail"}{@html FAIL_SVG}{:else}{@html OCR_SVG}{/if}
+        </button>
+        <button class="tl" title="钉图（钉在屏幕上）" onclick={pinIt} disabled={pinBusy}>
+          {@html PIN_SVG}
         </button>
       </div>
       {/if}

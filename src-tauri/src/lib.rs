@@ -3,6 +3,7 @@ mod capture;
 mod config;
 mod cursor;
 mod ocr;
+mod pin;
 mod updater;
 
 use std::sync::Mutex;
@@ -116,6 +117,7 @@ pub fn run() {
         .manage(Mutex::new(config_error))
         .manage(Mutex::new(None::<image::RgbaImage>))
         .manage(Mutex::new(None::<capture::CaptureMeta>))
+        .manage(pin::PinStore::default())
         .setup(move |app| {
             let cap = MenuItem::with_id(app, "capture", "截图", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
@@ -174,14 +176,19 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|window, event| match event {
             // Settings closes to a hidden, reusable window; overlay closes for real.
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "settings" {
-                    api.prevent_close();
-                    window.hide().ok();
+            WindowEvent::CloseRequested { api, .. } if window.label() == "settings" => {
+                api.prevent_close();
+                window.hide().ok();
+            }
+            // Pins are disposable: free the in-memory image when one dies.
+            WindowEvent::Destroyed if window.label().starts_with("pin-") => {
+                if let Some(store) = window.app_handle().try_state::<pin::PinStore>() {
+                    store.images.lock().unwrap().remove(window.label());
                 }
             }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             capture::get_capture_meta,
@@ -190,6 +197,8 @@ pub fn run() {
             config::get_config_error,
             config::set_config,
             ocr::ocr_image,
+            pin::pin_image,
+            pin::get_pin_image,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -2,6 +2,15 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.8.0]
+
+### Added
+- **取字** — a toolbar button OCRs the selection (local WinRT) and puts the text straight into the clipboard; the icon flashes ✓/✗.
+- **钉图** — pin the selection (annotations baked in) exactly where it is, as a 1:1 always-on-top frameless window. Drag anywhere to move, mouse-wheel to zoom (25%–300%), hover-✕ or Esc to close; multiple pins coexist.
+
+### Changed
+- The OCR command is now async — it used to run its 1-2s PowerShell call on the main thread, freezing every window meanwhile.
+
 ## [0.7.0]
 
 ### Added

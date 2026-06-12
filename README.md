@@ -25,6 +25,8 @@
 - 在选区上画个箭头、圈个框、涂两笔再问，AI 看到的就是你画完的样子。
 - OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。
 - 纯文本模型也能用：截图先过本地 Windows OCR，变成文字再发过去。
+- 框住一段抠不出来的文字，点一下取字，文字就在剪贴板里了——全程本地 OCR，不走网络。
+- 框好的区域（连同你画的标注）可以一键钉在屏幕上：随手拖、滚轮缩放、要几个钉几个。
 - 一个小色环跟着鼠标走，演示、录屏时观众一眼能跟上你的光标。半径、颜色、透明度都在设置里，截图永远拍不到它。
 - 升级不用跑 GitHub：托盘菜单会自己冒出「更新到 vX.Y.Z」，点一下，下载、验签、安装一气呵成。
 - 跑在 Windows 10/11 自带的 WebView2 上，装完约 11 MB。
@@ -44,15 +46,10 @@
 
 ### 未来计划
 
-- [ ] 答案、代码块一键复制
-- [ ] 输入条上的快捷指令——解释 / 翻译 / 总结选区
 - [ ] 剪贴板里的图、拖进来的图也能直接问
 - [ ] 托盘里翻看历史会话
 - [ ] 标注工具栏加文字、高亮、马赛克
-- [ ] OCR 纯文字模式：框一下，文字到手
 - [ ] 框选外文，译文原地盖上去
-- [ ] 钉图：截完钉在屏幕上
-- [ ] 问答时直接换模型
 - [ ] 答案朗读
 
 ### 从源码构建
@@ -84,6 +81,8 @@ Press the hotkey and the screen dims. Drag over the thing you're curious about, 
 - Draw an arrow at the part you mean, box it, scribble on it. The AI sees exactly what you drew.
 - Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list.
 - Text-only model? The screenshot runs through Windows OCR first and arrives as text.
+- Frame some un-copyable text and hit the OCR button — it lands in your clipboard, fully local, nothing leaves the machine.
+- Pin the selection (your annotations included) right where it sits: drag it around, zoom with the wheel, pin as many as you like.
 - A small colored ring rides along with your cursor, so viewers can follow your pointer in demos and recordings. Radius, color and opacity sit in Settings — and it never appears in your screenshots.
 - Updates come to you: the tray menu flags a new version, and one click downloads, verifies and installs it.
 - Runs on the WebView2 already inside Windows 10/11 — install lands at ~11 MB.
@@ -103,15 +102,10 @@ Settings sit in the tray icon: provider, API key, model — hit **Pull** and pic
 
 ### Roadmap
 
-- [ ] Copy an answer or a code block with one click
-- [ ] Quick prompts on the input bar — explain / translate / summarize the selection
 - [ ] Ask about an image from the clipboard or a dropped file
 - [ ] Browse past conversations from the tray
 - [ ] Text labels, highlight and mosaic in the annotation toolbar
-- [ ] OCR-only mode: select, grab the text, done
 - [ ] Translate the selection and overlay the result in place
-- [ ] Pin a screenshot on top of the screen
-- [ ] Switch models right from the ask bar
 - [ ] Read answers aloud
 
 ### Build from source
