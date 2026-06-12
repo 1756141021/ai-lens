@@ -114,15 +114,57 @@ function openaiRequest(config: ApiConfig, turns: ChatTurn[]): Request {
   });
   const body: Record<string, unknown> = { model: config.model, messages, stream: true };
   if (config.web?.mode === "native") {
-    // OpenRouter has a first-class server tool (the old plugins/:online forms
-    // are deprecated); elsewhere the only chat-completions-level switch is
-    // web_search_options (OpenAI's -search-preview models). Endpoints that
-    // support neither will 400 or silently ignore it — Settings copy steers
-    // those users to app mode.
+    // Only OpenRouter and Azure still reach this in native mode (wireFor sends
+    // everything else to the Responses API). OpenRouter has a first-class
+    // server tool; Azure gets web_search_options as a best effort.
     if (/openrouter/i.test(config.baseUrl)) body.tools = [{ type: "openrouter:web_search" }];
     else body.web_search_options = {};
   }
   return { url: openaiUrl(config), headers: openaiHeaders(config), body };
+}
+
+// ---------- OpenAI Responses API (native web search for OAI-compatible) ----------
+
+// Chat completions has no general web_search tool — only the -search-preview
+// models honor web_search_options. The Responses API does have one (it's the
+// wire Codex speaks), and relays that pass it through get real provider-side
+// search. Used only when 联网=native on the openai provider.
+function responsesUrl(config: ApiConfig): string {
+  let url = withScheme(trimSlash(config.baseUrl)) || "https://api.openai.com/v1";
+  url = trimSlash(url);
+  if (!/\/responses$/i.test(url)) {
+    try {
+      const u = new URL(url);
+      if (u.pathname === "" || u.pathname === "/") url = `${u.origin}/v1/responses`;
+      else url = url + "/responses";
+    } catch {
+      url = url + "/responses";
+    }
+  }
+  return url;
+}
+
+function responsesRequest(config: ApiConfig, turns: ChatTurn[]): Request {
+  const input = turns.map((t) => {
+    if (t.role === "assistant") {
+      return { role: "assistant", content: [{ type: "output_text", text: t.text }] };
+    }
+    const content: unknown[] = [];
+    const hasImg = !!t.imageBase64 && config.supportsVision;
+    if (hasImg) {
+      content.push({ type: "input_image", image_url: `data:${MEDIA_TYPE};base64,${t.imageBase64}` });
+    }
+    const text = t.ocrText ? `[Image OCR text]:\n${t.ocrText}\n\n${t.text}` : t.text;
+    content.push({ type: "input_text", text: hasImg ? text || "What do you see in this image?" : text });
+    return { role: "user", content };
+  });
+  return {
+    url: responsesUrl(config),
+    headers: openaiHeaders(config),
+    // store:false — the Responses API keeps conversations server-side by
+    // default; chat completions never did, so keep that privacy semantic.
+    body: { model: config.model, input, stream: true, store: false, tools: [{ type: "web_search" }] },
+  };
 }
 
 // ---------- Anthropic (native Messages API) ----------
@@ -206,8 +248,24 @@ export type StreamEvent =
   | { type: "text"; text: string }
   | { type: "status"; text: string; sticky?: boolean };
 
-function extractEvents(provider: Provider, json: any): StreamEvent[] {
-  switch (provider) {
+/** The actual protocol a request is spoken in — usually the provider itself,
+ *  but native web search upgrades plain OpenAI endpoints to the Responses API. */
+type Wire = Provider | "openai-responses";
+
+function wireFor(config: ApiConfig): Wire {
+  if (
+    config.provider === "openai" &&
+    config.web?.mode === "native" &&
+    !/openrouter/i.test(config.baseUrl) &&
+    !config.baseUrl.includes(".openai.azure.com")
+  ) {
+    return "openai-responses";
+  }
+  return config.provider;
+}
+
+function extractEvents(wire: Wire, json: any): StreamEvent[] {
+  switch (wire) {
     case "anthropic": {
       if (json.type === "content_block_delta") {
         const t = json.delta?.text;
@@ -232,6 +290,21 @@ function extractEvents(provider: Provider, json: any): StreamEvent[] {
       if (t) out.push({ type: "text", text: t });
       return out;
     }
+    case "openai-responses": {
+      const t = json.type;
+      if (t === "response.output_text.delta" && json.delta)
+        return [{ type: "text", text: String(json.delta) }];
+      // different implementations emit different progress events — catch both
+      if (
+        (t === "response.output_item.added" && json.item?.type === "web_search_call") ||
+        t === "response.web_search_call.in_progress" ||
+        t === "response.web_search_call.searching"
+      ) {
+        return [{ type: "status", text: "正在搜索网页…" }];
+      }
+      if (t === "error") throw new Error(json.message || "Responses API 流错误");
+      return [];
+    }
     default: {
       const t = json.choices?.[0]?.delta?.content;
       return t ? [{ type: "text", text: t }] : [];
@@ -239,12 +312,14 @@ function extractEvents(provider: Provider, json: any): StreamEvent[] {
   }
 }
 
-function buildRequest(config: ApiConfig, turns: ChatTurn[]): Request {
-  switch (config.provider) {
+function buildRequest(wire: Wire, config: ApiConfig, turns: ChatTurn[]): Request {
+  switch (wire) {
     case "anthropic":
       return anthropicRequest(config, turns);
     case "gemini":
       return geminiRequest(config, turns);
+    case "openai-responses":
+      return responsesRequest(config, turns);
     default:
       return openaiRequest(config, turns);
   }
@@ -476,9 +551,10 @@ export async function* streamChat(
     return;
   }
 
-  const { url, headers, body } = buildRequest(config, turns);
+  const wire = wireFor(config);
+  const { url, headers, body } = buildRequest(wire, config, turns);
   const response = await doFetch(url, headers, body, signal);
   for await (const json of readSse(response)) {
-    yield* extractEvents(config.provider, json);
+    yield* extractEvents(wire, json);
   }
 }

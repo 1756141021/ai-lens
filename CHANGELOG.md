@@ -2,6 +2,11 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.11.1]
+
+### Added
+- **Provider-native search now works on OpenAI-compatible relays** — in native mode the OpenAI provider speaks the **Responses API** (`/v1/responses` with the `web_search` server tool, the same wire Codex uses) instead of the mostly-unsupported chat-completions `web_search_options`. Relays that pass the Responses API through get real provider-side search with live status lines; endpoints without it error clearly, and Settings points to app mode. Requests are sent with `store: false`, matching chat completions' no-server-side-retention semantics. OpenRouter keeps its own server tool; Azure keeps `web_search_options`; app mode and web-off traffic still use chat completions unchanged.
+
 ## [0.11.0]
 
 ### Added

@@ -257,8 +257,9 @@
           {#if webMode === "native"}
             <span class="hint">
               能不能搜，取决于你的 API 源有没有开放联网：<b>Anthropic（Claude）</b>、<b>Google Gemini</b>、
-              <b>OpenRouter</b> 官方都支持；其他 OpenAI 兼容端点（中转站等）多数不支持——表现为报错，或者当没听见、答不出实时内容。
-              源不支持就换「应用内搜索」，那条不依赖 API 源。部分服务商对联网搜索单独计费。
+              <b>OpenRouter</b> 官方都支持；OpenAI 兼容端点（含中转站）走 <b>Responses API</b>（Codex 同款协议），
+              源透传它就能搜——不支持会报错或答不出实时内容，那就换「应用内搜索」，那条不依赖 API 源。
+              部分服务商对联网搜索单独计费。
             </span>
           {:else}
             <span class="hint">

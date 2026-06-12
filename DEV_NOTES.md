@@ -66,9 +66,15 @@ src/
     `server_tool_use`/`web_search_tool_result` blocks → status lines; `pause_turn` continuation
     NOT implemented — a very long server-side search may end the turn early), Gemini
     `tools:[{google_search:{}}]` (groundingMetadata.webSearchQueries → sticky status), OpenRouter
-    `tools:[{type:"openrouter:web_search"}]` (the plugins/`:online` forms are deprecated), other
-    OAI endpoints `web_search_options:{}` (only OpenAI's -search-preview models honor it; relays
-    may 400 or ignore — Settings copy steers those to app mode).
+    `tools:[{type:"openrouter:web_search"}]` (the plugins/`:online` forms are deprecated).
+    **Plain OpenAI endpoints upgrade to the Responses API (0.11.1)**: `wireFor` returns the
+    internal wire `"openai-responses"` → `/v1/responses` + `tools:[{type:"web_search"}]` +
+    `store:false`, events `response.output_text.delta` / `response.output_item.added
+    (web_search_call)` → status. Chat completions' `web_search_options` was a dead end on relays
+    (accepted-but-ignored on the user's, only -search-preview models honor it officially), while
+    the Responses API is what Codex speaks and relays commonly pass through — verified live on
+    the user's relay (real current-events answers with sources). Azure stays on chat completions
+    (different /responses routing); app mode and web-off never touch the new wire.
   - **app mode** (OpenAI-compatible only) = `streamOpenaiTools` function-calling loop:
     accumulate `delta.tool_calls` fragments by index → execute locally (webtools.ts) → append
     assistant(tool_calls) + role:"tool" messages at WIRE level (neutral ChatTurn[] stays clean;
