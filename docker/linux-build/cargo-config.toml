@@ -1,0 +1,9 @@
+# crates.io via rsproxy sparse index (the image builds behind the GFW).
+[source.crates-io]
+replace-with = 'rsproxy-sparse'
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true

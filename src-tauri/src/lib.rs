@@ -69,7 +69,10 @@ fn build_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         .skip_taskbar(true)
         .maximizable(false) // drag-region double-click would otherwise toggle-maximize
         .shadow(false)
-        .transparent(true) // QQ-style: dim layer over the live desktop, no frozen frame
+        // Windows: QQ-style transparent dim over the live desktop. Linux paints
+        // a frozen frame instead — webkitgtk transparency is flaky (black
+        // windows on NVIDIA/VMs) and Wayland forbids positioning anyway.
+        .transparent(cfg!(windows))
         .focused(true)
         .visible(false)
         .on_navigation(move |url| allow_navigation(&handle, url))
@@ -77,9 +80,10 @@ fn build_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Capture the monitor under the cursor, position the (reused) overlay over it,
-/// and signal the frontend. The frontend shows the window itself once it has
-/// painted the frozen frame — no rebuild, no stale/black flash on reuse.
+/// Windows: grab synchronously, position the (reused) transparent overlay over
+/// the captured monitor, and signal the frontend. The frontend shows the window
+/// itself once painted — no rebuild, no stale/black flash on reuse.
+#[cfg(windows)]
 fn run_capture(app: &AppHandle) -> Result<(), String> {
     let last = app.state::<capture::LastCapture>();
     let meta = app.state::<capture::CaptureMetaState>();
@@ -97,6 +101,123 @@ fn run_capture(app: &AppHandle) -> Result<(), String> {
     // Reused overlay: its listener re-inits + shows. Freshly built overlay (only
     // if prebuild failed): its onMount reads the meta and shows itself.
     app.emit("capture-ready", ()).ok();
+    Ok(())
+}
+
+/// Linux: async — the Wayland portal call can sit behind a permission dialog,
+/// and even the X11 path pays a PNG encode for the frozen frame. Blocking the
+/// main thread on either would freeze every window's event loop.
+#[cfg(target_os = "linux")]
+fn run_capture(app: &AppHandle) -> Result<(), String> {
+    let h = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_capture_linux(h).await {
+            eprintln!("[capture] {e}");
+        }
+    });
+    Ok(())
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn run_capture(_app: &AppHandle) -> Result<(), String> {
+    Err("capture is not supported on this platform yet".into())
+}
+
+#[cfg(target_os = "linux")]
+async fn run_capture_linux(app: AppHandle) -> Result<(), String> {
+    let frame_file = config::cache_dir().join("overlay-frame.png");
+    std::fs::create_dir_all(config::cache_dir()).map_err(|e| e.to_string())?;
+
+    if capture::wayland_session() {
+        // Grab BEFORE the overlay shows: the first-run portal permission dialog
+        // must not fight a fullscreen window for the screen.
+        let png = capture::portal::grab_frame().await?;
+        // Into the asset-protocol scope ($CONFIG/ai-lens/cache); the portal may
+        // write on another filesystem, so fall back to copy+delete.
+        if std::fs::rename(&png, &frame_file).is_err() {
+            std::fs::copy(&png, &frame_file).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&png).ok();
+        }
+        let full = image::open(&frame_file)
+            .map_err(|e| format!("解码截屏帧失败:{e}"))?
+            .into_rgba8();
+
+        let win = match app.get_webview_window("overlay") {
+            Some(w) => w,
+            None => build_overlay(&app)?,
+        };
+        // Wayland refuses client positioning: go fullscreen, let the compositor
+        // pick the monitor, then crop to wherever we landed.
+        app.emit("capture-pending", ()).ok(); // reused overlay blanks stale pixels
+        win.set_fullscreen(true).ok();
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().ok();
+        let mut mon = None;
+        for _ in 0..50 {
+            if let Ok(Some(m)) = win.current_monitor() {
+                mon = Some(m);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let mon = mon.ok_or("窗口未落到任何显示器上")?;
+        let scale = mon.scale_factor();
+        let pos = *mon.position();
+        let size = *mon.size();
+        let (fw, fh) = (full.width(), full.height());
+        let fx = (pos.x.max(0) as u32).min(fw.saturating_sub(1));
+        let fy = (pos.y.max(0) as u32).min(fh.saturating_sub(1));
+        let cw = size.width.min(fw - fx);
+        let ch = size.height.min(fh - fy);
+        if cw == 0 || ch == 0 {
+            return Err("显示器矩形落在截屏帧之外".into());
+        }
+        let cropped = image::imageops::crop_imm(&full, fx, fy, cw, ch).to_image();
+        let m = capture::CaptureMeta {
+            width: cw,
+            height: ch,
+            origin_x: pos.x,
+            origin_y: pos.y,
+            scale,
+            frozen_frame: true,
+            frame_path: Some(frame_file.to_string_lossy().into()),
+            frame_offset_x: fx,
+            frame_offset_y: fy,
+        };
+        let last = app.state::<capture::LastCapture>();
+        let meta = app.state::<capture::CaptureMetaState>();
+        capture::store(&last, &meta, cropped, m);
+        app.emit("capture-ready", ()).ok();
+    } else {
+        // X11: monitor under the cursor, exactly like Windows, plus one PNG
+        // encode (off the main thread) for the frozen frame.
+        let g = capture::screen::grab(&app)?;
+        g.img.save(&frame_file).map_err(|e| e.to_string())?;
+        let m = capture::CaptureMeta {
+            width: g.img.width(),
+            height: g.img.height(),
+            origin_x: g.origin_x,
+            origin_y: g.origin_y,
+            scale: g.scale,
+            frozen_frame: true,
+            frame_path: Some(frame_file.to_string_lossy().into()),
+            frame_offset_x: 0,
+            frame_offset_y: 0,
+        };
+        let win = match app.get_webview_window("overlay") {
+            Some(w) => w,
+            None => build_overlay(&app)?,
+        };
+        win.set_position(PhysicalPosition::new(m.origin_x, m.origin_y))
+            .map_err(|e| e.to_string())?;
+        win.set_size(PhysicalSize::new(m.width, m.height))
+            .map_err(|e| e.to_string())?;
+        let last = app.state::<capture::LastCapture>();
+        let meta = app.state::<capture::CaptureMetaState>();
+        capture::store(&last, &meta, g.img, m);
+        // Frontend paints the frame, then shows the window itself — no flash.
+        app.emit("capture-ready", ()).ok();
+    }
     Ok(())
 }
 

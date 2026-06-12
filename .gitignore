@@ -1,5 +1,10 @@
 # dependencies
 node_modules/
+# pnpm store, if a container/CI pnpm ever falls back to the project dir
+.pnpm-store/
+
+# container X11 smoke output
+.smoke/
 
 # build output
 dist/

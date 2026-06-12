@@ -23,6 +23,8 @@ pub fn cleanup(max_count: usize) -> Result<(), String> {
                 .map(|ext| ext.eq_ignore_ascii_case("png"))
                 .unwrap_or(false)
         })
+        // the live overlay frame (Linux frozen-frame capture) is not a crop
+        .filter(|e| e.file_name() != *"overlay-frame.png")
         .collect();
 
     if entries.len() <= max_count {

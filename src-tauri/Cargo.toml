@@ -12,7 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
@@ -27,6 +27,10 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 xcap = "0.7"
 dirs = "6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Wayland capture goes through org.freedesktop.portal.Screenshot
+ashpd = { version = "0.13", default-features = false, features = ["tokio"] }
 
 
 [profile.release]

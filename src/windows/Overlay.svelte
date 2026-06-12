@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { listen } from "@tauri-apps/api/event";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -13,6 +13,13 @@
     originX: number;
     originY: number;
     scale: number;
+    // Linux frozen-frame capture: paint this PNG instead of sitting transparent
+    // over the live desktop (Wayland forbids positioning; webkitgtk transparency
+    // is flaky). frameOffset = this monitor's rect inside the frame file.
+    frozenFrame: boolean;
+    framePath: string | null;
+    frameOffsetX: number;
+    frameOffsetY: number;
   };
 
   let config: AppConfig | null = null;
@@ -21,6 +28,7 @@
   let canvas: HTMLCanvasElement;
   let dpr = 1;
   let meta: Meta | null = null;
+  let frameImg: HTMLImageElement | null = null;
 
   // the ask/compose stack floats near the selection
   let stackEl = $state<HTMLDivElement>();
@@ -100,12 +108,24 @@
     window.addEventListener("keydown", onKey);
     // Reused (prewarmed) overlay: every capture re-inits via this event.
     const unlisten = listen("capture-ready", () => initCapture());
+    // Wayland shows the (reused) overlay before the new frame exists — blank
+    // the stale pixels rather than flash the previous capture.
+    const unlistenPending = listen("capture-pending", () => {
+      frameImg = null;
+      meta = null;
+      if (canvas) {
+        const ctx = canvas.getContext("2d")!;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    });
     // First mount: prebuilt + hidden → meta is null → stays hidden until a real capture.
     initCapture();
     return () => {
       ro.disconnect();
       window.removeEventListener("keydown", onKey);
       unlisten.then((u) => u());
+      unlistenPending.then((u) => u());
     };
   });
 
@@ -153,9 +173,25 @@
     pullError = null;
 
     dpr = window.devicePixelRatio || 1;
+    // Linux frozen frame: decode before first paint so the window never shows a
+    // half-drawn state. Cache-busted — the file name is the same every capture.
+    frameImg = null;
+    if (m.frozenFrame && m.framePath) {
+      try {
+        frameImg = await new Promise<HTMLImageElement>((res, rej) => {
+          const im = new Image();
+          im.onload = () => res(im);
+          im.onerror = rej;
+          im.src = convertFileSrc(m.framePath!) + `?t=${Date.now()}`;
+        });
+      } catch {
+        frameImg = null; // dim-only fallback still beats a dead overlay
+      }
+    }
     sizeCanvas();
     draw();
-    // Transparent overlay over the live desktop — nothing to decode, show now.
+    // Windows overlay is transparent over the live desktop; on Wayland the
+    // window is already visible (fullscreen-first) and show() is a no-op.
     const w = getCurrentWindow();
     await w.show();
     await w.setFocus();
@@ -195,9 +231,13 @@
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
     const cw = canvas.width, ch = canvas.height;
-    // Dim the whole screen: the window is transparent, so this 45% black sits
-    // over the live desktop. The selection punches a transparent hole.
+    // Dim the whole screen. Windows: the window is transparent, the 45% black
+    // sits over the live desktop. Linux: the frozen frame painted first is the
+    // desktop stand-in, dimmed the same way.
     ctx.clearRect(0, 0, cw, ch);
+    if (frameImg && meta) {
+      ctx.drawImage(frameImg, meta.frameOffsetX, meta.frameOffsetY, cw, ch, 0, 0, cw, ch);
+    }
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(0, 0, cw, ch);
 
@@ -206,8 +246,17 @@
       if (phase === "select") drawHint(ctx, cw, ch);
       return;
     }
-    // selection: clear back to full transparency → live desktop at full brightness
-    ctx.clearRect(r.x, r.y, r.w, r.h);
+    // selection at full brightness: transparent hole (Windows) or frame redraw (Linux)
+    if (frameImg && meta) {
+      ctx.clearRect(r.x, r.y, r.w, r.h);
+      ctx.drawImage(
+        frameImg,
+        meta.frameOffsetX + r.x, meta.frameOffsetY + r.y, r.w, r.h,
+        r.x, r.y, r.w, r.h,
+      );
+    } else {
+      ctx.clearRect(r.x, r.y, r.w, r.h);
+    }
     ctx.strokeStyle = "rgba(255,255,255,0.92)";
     ctx.lineWidth = 1.5 * dpr;
     ctx.strokeRect(r.x, r.y, r.w, r.h);
