@@ -205,6 +205,17 @@ dropdown), `api.supports_vision` (true → send image incl. annotations; false �
   `streamChat` and `fetchModels`: plain-Chinese first line per status
   (400/401/402/403/404/408/413/422/429/5xx), raw status+body+URL below; `.err`/`.mierr`/`.hint.err`
   render multi-line via `white-space: pre-line`.
+- **Navigation guard on the overlay** (0.9.1): DOMPurify keeps http(s) `<a>` links in answers,
+  and a click on one used to NAVIGATE the overlay webview off index.html — a reused window
+  navigated away is bricked (next capture only repositions + emits `capture-ready`; nobody is
+  listening anymore). `build_overlay` sets `on_navigation`: own origins pass (`*.localhost`,
+  dev `localhost`), external http(s) returns false and opens via `app.opener().open_url` instead
+  (tauri-plugin-opener — `shell.open` is deprecated; the shell plugin was dropped entirely,
+  Settings key links use `plugin:opener|open_url` + `opener:default` capability).
+  Covers left/middle click and `location.href=`. `target=_blank`/`window.open` need no handling:
+  wry's NewWindowRequested defaults to `SetHandled(true)` (suppressed) when no handler is set.
+  Only the overlay renders untrusted markdown — pin renders one `<img>`, settings/cursor render
+  only our own UI — so the guard lives on that one builder.
 
 ## Auto-update & releases
 

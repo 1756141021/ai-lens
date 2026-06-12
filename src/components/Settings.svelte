@@ -92,7 +92,7 @@
   const firstRun = !init.apiKey;
 
   function openUrl(url: string) {
-    invoke("plugin:shell|open", { path: url }).catch(() => {});
+    invoke("plugin:opener|open_url", { url }).catch(() => {});
   }
 
   const KEY_LINKS: Record<string, { name: string; url: string }[]> = {

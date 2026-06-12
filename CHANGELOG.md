@@ -2,6 +2,11 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.9.1]
+
+### Fixed
+- Clicking a link inside an AI answer navigated the overlay webview away from the app — and since the overlay window is prewarmed and reused, every later capture hit a dead page until the app was restarted. An `on_navigation` guard now keeps the overlay on its own origin and diverts external http(s) links to the system browser. Left/middle click and script-driven navigation are all covered.
+
 ## [0.9.0]
 
 Hardening + onboarding round, driven by a three-persona review (junior dev / staff engineer / non-technical user).

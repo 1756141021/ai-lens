@@ -18,7 +18,7 @@
     "core:window:allow-start-dragging",
     "core:event:default",
     "global-shortcut:default",
-    "shell:default",
+    "opener:default",
     "clipboard-manager:allow-write-text",
     "autostart:default",
     {

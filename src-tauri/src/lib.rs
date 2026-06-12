@@ -15,6 +15,7 @@ use tauri::{
     WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_opener::OpenerExt;
 
 const DEFAULT_HOTKEY: &str = "ctrl+shift+s";
 
@@ -40,10 +41,26 @@ pub fn unregister_shortcut(app: &AppHandle, spec: &str) {
     app.global_shortcut().unregister(spec).ok();
 }
 
+/// Links in AI answers must open the system browser — never navigate the
+/// (reused) overlay webview away from index.html, which would brick it until
+/// an app restart. Allow the app's own origins (tauri.localhost in prod,
+/// localhost:1420 in dev) and non-http schemes; divert external http(s).
+fn allow_navigation(app: &AppHandle, url: &tauri::Url) -> bool {
+    let host = url.host_str().unwrap_or("");
+    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+        return true;
+    }
+    if matches!(url.scheme(), "http" | "https") {
+        let _ = app.opener().open_url(url.to_string(), None::<&str>);
+    }
+    false
+}
+
 /// Build the fullscreen, opaque, borderless, always-on-top overlay window
 /// (hidden). Prebuilt once at startup and reused for every capture so the hot
 /// path never pays for a webview rebuild.
 fn build_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
+    let handle = app.clone();
     WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("index.html".into()))
         .decorations(false)
         .always_on_top(true)
@@ -53,6 +70,7 @@ fn build_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         .transparent(true) // QQ-style: dim layer over the live desktop, no frozen frame
         .focused(true)
         .visible(false)
+        .on_navigation(move |url| allow_navigation(&handle, url))
         .build()
         .map_err(|e| e.to_string())
 }
@@ -106,7 +124,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(
