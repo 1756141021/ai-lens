@@ -1,5 +1,6 @@
 mod cache;
 mod capture;
+mod chat;
 mod config;
 mod crypto;
 mod cursor;
@@ -137,6 +138,7 @@ pub fn run() {
         .manage(Mutex::new(None::<image::RgbaImage>))
         .manage(Mutex::new(None::<capture::CaptureMeta>))
         .manage(pin::PinStore::default())
+        .manage(chat::ChatStore::default())
         .setup(move |app| {
             let cap = MenuItem::with_id(app, "capture", "截图", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
@@ -207,6 +209,10 @@ pub fn run() {
                     store.images.lock().unwrap().remove(window.label());
                 }
             }
+            // Chat windows: free their seed/title on close.
+            WindowEvent::Destroyed if window.label().starts_with("chat-") => {
+                chat::on_destroyed(window);
+            }
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
@@ -218,6 +224,10 @@ pub fn run() {
             ocr::ocr_image,
             pin::pin_image,
             pin::get_pin_image,
+            chat::spawn_chat,
+            chat::get_chat_seed,
+            chat::list_chats,
+            chat::append_to_chat,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

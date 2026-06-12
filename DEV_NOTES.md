@@ -25,10 +25,12 @@ src-tauri/src/
   crypto.rs    — DPAPI seal/unseal for the API key at rest (raw crypt32 FFI)
   cursor.rs    — cursor highlight ring: follower thread (raw Win32 FFI) + ring window
   pin.rs       — pinned screenshots: in-memory PinStore + pin window creation
+  chat.rs      — parallel chat windows: ChatStore (seed+title) + spawn/list/append commands
 
 src/
-  main.ts                 — routes by window label → Overlay or SettingsWindow
-  windows/Overlay.svelte  — THE centerpiece: select + annotate + in-place chat (transparent overlay)
+  main.ts                 — routes by window label → Overlay / Settings / Cursor / Pin / Chat
+  windows/Overlay.svelte  — capture tool: select + annotate + compose first question, then spawns a chat window
+  windows/ChatPanel.svelte      — ONE conversation, its own window (streaming + follow-ups + drag + close)
   windows/SettingsWindow.svelte — settings host
   windows/CursorRing.svelte     — the highlight ring (one div, restyled via config-changed)
   windows/PinWindow.svelte      — pinned screenshot (img + drag + wheel zoom + hover-✕)
@@ -53,6 +55,19 @@ src/
 ```
 
 ## Architecture Decisions
+
+- **Parallel conversations = one window each (0.10.0).** The overlay used to morph into the single
+  chat panel (select → ask → detached, same window), so a new capture had to discard the old
+  conversation. Now the overlay is purely capture/compose; on send it `spawn_chat`s an independent
+  `chat-N` window seeded with the first turn and hides itself. Each chat window is its own webview =
+  its own `chat.svelte.ts` state and stream, so N conversations run truly in parallel. Spawning uses
+  the SAME deadlock-safe pattern as pin.rs (async command + `run_on_main_thread` + mpsc; seed
+  inserted into `ChatStore` BEFORE the build, pulled via `get_chat_seed` on mount). Cleanup on
+  `WindowEvent::Destroyed if label.starts_with("chat-")`. 追加 picks a target: overlay calls
+  `list_chats` (the title registry) → user picks → `append_to_chat` emits a `stage-image` event to
+  that window, which stages the crop and comes forward. This deleted the whole in-overlay
+  detach/shrinkOntoPanel/savedConvo machinery from 0.9.x.
+
 
 - **Tray-only, prewarmed transparent overlay (QQ-style)**: No main window. One `overlay`
   window is built hidden at startup (`.transparent(true)`) and **reused** every capture — no

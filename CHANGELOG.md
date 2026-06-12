@@ -2,6 +2,16 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.10.0]
+
+### Added
+- **Parallel conversations** — every question now opens in its own independent floating window. Ask about one thing, capture again and ask about another, and both stream and answer side by side; each window drags, follows up, and closes on its own. The old single-panel design discarded a conversation whenever you started a new one — that's gone.
+- **Attach a capture to an existing conversation** — when chat windows are open, framing a new region pops a chooser: **新问题** (open another window) or **追加**, which lists your open conversations by title so you can drop the screenshot into the right one. It comes forward with the image staged for your next follow-up.
+- **Drag the selection box** — after framing, grab inside the box (no tool selected) to reposition it; the crop and any annotations move with it.
+
+### Changed
+- The capture overlay is now purely capture + annotate + compose; conversations live in their own windows (spawned with the same deadlock-safe pattern as pins). This removes the in-overlay detach/shrink machinery entirely.
+
 ## [0.9.2]
 
 First-session user feedback round.
