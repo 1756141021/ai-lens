@@ -387,3 +387,38 @@ Incremental Rust edits after that are seconds.
       draggable selection box
 - [x] 0.11.0 联网搜索: provider-native (Anthropic/Gemini/OpenRouter) + app-level tool loop
       (Bing RSS/DDG/Tavily + fetch_url with SSRF guard), 🌐 toggle, live action line
+
+## Linux port (0.12.0, IN PROGRESS — checkpoint 2026-06-12)
+
+Approved plan with the full decision table lives in the session plan file; the short version:
+X11 keeps xcap, Wayland captures via the Screenshot portal (ashpd), the overlay becomes an
+opaque **frozen frame** on all of Linux (Wayland forbids client positioning, webkitgtk
+transparency is flaky), hotkeys on GNOME-Wayland go through a gsettings custom keybinding
+firing `ai-lens --capture` (single-instance forwards argv), AppImage is the auto-update
+channel, keys go to the Secret Service via `keyring` (stage 3).
+
+State by stage:
+
+- **Stage 0 ✅ (d41a49e)** platform scaffolding: `capture/{mod,screen,portal}.rs` split,
+  `crypto.rs`→`secrets.rs` (DPAPI behind cfg(windows)), cursor/OCR cfg-gated,
+  single-instance + `--capture`/`--settings` CLI. Windows regression 35/35 + real relay
+  15.4s + DPAPI unseal + crop all green after the refactor.
+- **Stage 1 ~80%**: Docker data migrated to `E:\Docker\wsl` via **junction** (the
+  `DataFolder` settings key is ignored by this Docker Desktop — it recreated data on C:;
+  junction works). `docker/linux-build/` Dockerfile (CN mirrors: tuna apt **over http** —
+  base image has no ca-certificates and apt-update failures are WARNINGS, exit 0, beware)
+  + smoke.sh (Xvfb boot + frame dumps to `.smoke/`). Image built once OK; after adding
+  `libpipewire-0.3-dev clang` (xcap Linux needs pipewire) the apt step flakes with exit 100
+  in BuildKit while the same line passes interactively → **next session starts here**: add
+  `-o Acquire::Retries=3` or switch to the aliyun mirror and rebuild. Volumes:
+  ailens-cargo/-target/-node/-cache; pnpm store pinned off /work (it once dumped
+  .pnpm-store into the repo); pnpm-workspace.yaml allows the esbuild postinstall (pnpm 10).
+- **Stage 2 code complete (this commit), NOT yet compiled on Linux**: portal.rs is written
+  against ashpd 0.13 from research, not a compiler — expect API touch-ups. Windows
+  `cargo check` + svelte-check green; **the 35/35 Windows regression has NOT been re-run
+  over the stage-2 diff yet** — run it before calling stage 2 done. VM not yet created;
+  ISO ready at `E:\VMs\iso\ubuntu-24.04.4-desktop-amd64.iso`. VirtualBox install pends
+  (UAC + may blip the network — don't run it under active downloads).
+- Stages 3/4 untouched. User decisions locked: Linux only (macOS interfaces reserved),
+  no OCR in Linux v1, i18n/system-prompt/chat-history → ROADMAP.md (stage 4), nothing
+  test-related lands on C:.
