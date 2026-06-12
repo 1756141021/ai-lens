@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { saveConfig, type AppConfig } from "../lib/config";
   import { fetchModels } from "../lib/api";
@@ -87,6 +88,24 @@
     }
   }
 
+  // No API key yet = first run — the window opened itself to onboard the user.
+  const firstRun = !init.apiKey;
+
+  function openUrl(url: string) {
+    invoke("plugin:shell|open", { path: url }).catch(() => {});
+  }
+
+  const KEY_LINKS: Record<string, { name: string; url: string }[]> = {
+    openai: [
+      { name: "OpenAI", url: "https://platform.openai.com/api-keys" },
+      { name: "DeepSeek", url: "https://platform.deepseek.com/api_keys" },
+      { name: "OpenRouter", url: "https://openrouter.ai/settings/keys" },
+    ],
+    anthropic: [{ name: "Anthropic Console", url: "https://console.anthropic.com/settings/keys" }],
+    gemini: [{ name: "Google AI Studio", url: "https://aistudio.google.com/apikey" }],
+  };
+  let keyLinks = $derived(KEY_LINKS[provider] ?? KEY_LINKS.openai);
+
   // Per-provider hints. Base URL can be left blank → official endpoint is used.
   const presets: Record<string, { urlPh: string; modelPh: string }> = {
     openai: { urlPh: "https://api.openai.com/v1", modelPh: "gpt-4o" },
@@ -139,6 +158,12 @@
 
 <div class="settings">
   <div class="body">
+    {#if firstRun}
+      <div class="welcome">
+        AI Lens 住在<b>系统托盘</b>里（屏幕右下角的小图标）。配好下面的服务商和
+        API Key，按 <b>{hotkey || "ctrl+shift+s"}</b> 就能框选屏幕提问了。
+      </div>
+    {/if}
     <section>
       <span class="sec">API</span>
       <label>
@@ -161,6 +186,13 @@
       <label>
         <span class="lb">API Key</span>
         <input type="password" bind:value={apiKey} placeholder="sk-..." spellcheck="false" />
+        <span class="hint">
+          没有 Key？在服务商控制台免费创建：
+          {#each keyLinks as l, i}
+            {#if i}<span> · </span>{/if}<button type="button" class="lnk" onclick={() => openUrl(l.url)}>{l.name}</button>
+          {/each}
+          {#if provider === "openai"}<span>（其他兼容服务商去各自官网）</span>{/if}
+        </span>
       </label>
       <label>
         <span class="lb">模型 (Model)</span>
@@ -307,7 +339,28 @@
   .lb { font-size: 12.5px; color: #aeb4c0; }
   .hint { font-size: 11px; color: #6b7280; line-height: 1.55; }
   .hint b { color: #aeb4c0; font-weight: 600; }
-  .hint.err { color: #ff9b9b; }
+  .hint.err { color: #ff9b9b; white-space: pre-line; overflow-wrap: anywhere; }
+
+  .lnk {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: #6ea8ff;
+    cursor: pointer;
+  }
+  .lnk:hover { text-decoration: underline; }
+
+  .welcome {
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: #cdd2dc;
+    padding: 11px 13px;
+    background: rgba(58, 130, 246, 0.09);
+    border: 1px solid rgba(58, 130, 246, 0.22);
+    border-radius: 8px;
+  }
+  .welcome b { color: #8fbaff; font-weight: 600; }
 
   .modelrow { display: flex; gap: 8px; }
   .modelrow input { flex: 1; }

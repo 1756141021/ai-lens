@@ -1,6 +1,7 @@
 mod cache;
 mod capture;
 mod config;
+mod crypto;
 mod cursor;
 mod ocr;
 mod pin;

@@ -23,7 +23,7 @@
 - 覆盖层是透明的，直接盖在实时桌面上——按下那一刻就在框选了，中间没有编码、没有等待。
 - 问题发出去的瞬间屏幕就还给你：回答在选区旁的小浮窗里慢慢流，你该干嘛干嘛，想到了再回来追问。
 - 在选区上画个箭头、圈个框、涂两笔再问，AI 看到的就是你画完的样子。
-- OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。
+- OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。用的是你自己的 AI 账号额度，不经过任何中间服务器，API Key 在本机加密保存。
 - 纯文本模型也能用：截图先过本地 Windows OCR，变成文字再发过去。
 - 框住一段抠不出来的文字，点一下取字，文字就在剪贴板里了——全程本地 OCR，不走网络。
 - 框好的区域（连同你画的标注）可以一键钉在屏幕上：随手拖、滚轮缩放、要几个钉几个。
@@ -34,6 +34,22 @@
 ### 安装
 
 从 [Releases](../../releases) 下载 `AI Lens_x.y.z_x64-setup.exe`，运行即可。
+
+> Windows 可能弹一个蓝色的「Windows 已保护你的电脑」——这是因为独立开发者没买几百刀一年的代码签名证书，不是程序有问题。点「更多信息 →仍要运行」即可。不放心的话，下面有从源码自己构建的方法。
+
+### 先配一个 AI 服务
+
+AI Lens 自己不带 AI，它把你的问题转发给你自己的 AI 账号。第一次打开会自动弹出设置，填三样东西：
+
+1. **服务商**——用 ChatGPT 选 OpenAI，用 Claude 选 Anthropic，国内常用 DeepSeek（选 OpenAI 兼容）。
+2. **API Key**——去服务商的控制台免费创建一个，复制粘贴进来。设置里有直达链接：
+   - OpenAI：<https://platform.openai.com/api-keys>
+   - DeepSeek：<https://platform.deepseek.com/api_keys>
+   - Anthropic：<https://console.anthropic.com/settings/keys>
+   - Google Gemini：<https://aistudio.google.com/apikey>
+3. **模型**——点「拉取」从账号里选一个，或直接填（如 `gpt-4o`、`deepseek-chat`）。
+
+> API Key 像一把钥匙，按用量从你的 AI 账号扣费——别分享给别人。它只存在你这台电脑上，且经 Windows DPAPI 加密。
 
 ### 用法
 
@@ -79,7 +95,7 @@ Press the hotkey and the screen dims. Drag over the thing you're curious about, 
 - The overlay is a transparent layer over your live desktop, so the capture has nothing to encode and nothing to wait for — press, and you're already framing.
 - The moment you hit send, the screen is yours again: the answer streams into a small floating panel beside your selection while you keep working, and follow-ups happen right there.
 - Draw an arrow at the part you mean, box it, scribble on it. The AI sees exactly what you drew.
-- Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list.
+- Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list. It uses your own AI account's quota — nothing routes through a middleman server, and your API key is stored encrypted on your machine.
 - Text-only model? The screenshot runs through Windows OCR first and arrives as text.
 - Frame some un-copyable text and hit the OCR button — it lands in your clipboard, fully local, nothing leaves the machine.
 - Pin the selection (your annotations included) right where it sits: drag it around, zoom with the wheel, pin as many as you like.
@@ -90,6 +106,22 @@ Press the hotkey and the screen dims. Drag over the thing you're curious about, 
 ### Install
 
 Grab `AI Lens_x.y.z_x64-setup.exe` from [Releases](../../releases) and run it.
+
+> Windows may show a blue "Windows protected your PC" prompt. That's because a solo developer hasn't paid the few-hundred-dollars-a-year for a code-signing certificate — it doesn't mean the app is unsafe. Click "More info → Run anyway". If you'd rather not, build from source (below).
+
+### Set up an AI service first
+
+AI Lens has no AI of its own — it forwards your questions to your own AI account. On first launch it pops open Settings; fill in three things:
+
+1. **Provider** — pick OpenAI if you use ChatGPT, Anthropic for Claude, or OpenAI-compatible for DeepSeek and most others.
+2. **API Key** — create one (free) in the provider's console and paste it in. Settings links straight to each:
+   - OpenAI: <https://platform.openai.com/api-keys>
+   - DeepSeek: <https://platform.deepseek.com/api_keys>
+   - Anthropic: <https://console.anthropic.com/settings/keys>
+   - Google Gemini: <https://aistudio.google.com/apikey>
+3. **Model** — hit "Pull" to pick one from your account, or just type it (`gpt-4o`, `deepseek-chat`, …).
+
+> An API key is like a key that bills your AI account per use — don't share it. It never leaves this machine and is stored encrypted via Windows DPAPI.
 
 ### Usage
 

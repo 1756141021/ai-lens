@@ -32,6 +32,26 @@ interface Request {
 // crop is always PNG (see capture.rs encode_png)
 const MEDIA_TYPE = "image/png";
 
+// HTTP errors land in front of end users — lead with what to do,
+// keep the raw status/body below for whoever needs to dig.
+function humanizeHttpError(status: number, body: string, url: string): string {
+  let advice: string | null = null;
+  if (status === 401 || status === 403)
+    advice = "API Key 无效或没有权限——去设置里检查 Key 是否填对、有没有过期";
+  else if (status === 402) advice = "账户余额不足——去服务商控制台充值或查看额度";
+  else if (status === 404) advice = "接口或模型不存在——检查接口地址，或点「拉取」重新选一个模型";
+  else if (status === 400 || status === 422)
+    advice = "请求被服务商拒绝——常见原因：模型不支持图片（去设置关掉「视觉识图」）、模型名拼错";
+  else if (status === 408) advice = "请求超时——网络不稳或服务商响应慢，稍后再试";
+  else if (status === 413) advice = "发送的内容太大——框小一点的区域试试";
+  else if (status === 429) advice = "请求太频繁或额度用完了——稍等再试，或到服务商控制台看看余额";
+  else if (status >= 500) advice = "服务商那边出错了——稍等片刻再试";
+  const detail = body.length > 400 ? body.slice(0, 400) + "…" : body;
+  return advice
+    ? `${advice}\n详情：${status} ${detail}\n接口：${url}`
+    : `接口返回 ${status}：${detail}\n接口：${url}`;
+}
+
 function trimSlash(s: string): string {
   return s.trim().replace(/\/+$/, "");
 }
@@ -199,7 +219,7 @@ export async function fetchModels(config: ApiConfig): Promise<string[]> {
   }
 
   const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(humanizeHttpError(res.status, await res.text(), url));
   const json: any = await res.json();
 
   let ids: string[];
@@ -235,8 +255,7 @@ export async function* streamChat(
   }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`接口返回 ${response.status}：${errorText}\n接口：${url}`);
+    throw new Error(humanizeHttpError(response.status, await response.text(), url));
   }
 
   const reader = response.body?.getReader();

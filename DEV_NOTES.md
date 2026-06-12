@@ -22,6 +22,7 @@ src-tauri/src/
   ocr.rs       — Windows OCR via PowerShell WinRT call
   cache.rs     — screenshot-cache cleanup (keeps newest N .png)
   config.rs    — config read/write, live hotkey re-register, Tauri commands
+  crypto.rs    — DPAPI seal/unseal for the API key at rest (raw crypt32 FFI)
   cursor.rs    — cursor highlight ring: follower thread (raw Win32 FFI) + ring window
   pin.rs       — pinned screenshots: in-memory PinStore + pin window creation
 
@@ -175,6 +176,36 @@ dropdown), `api.supports_vision` (true → send image incl. annotations; false �
 `api.auth_header`, `api.api_version`, `hotkey`, `cache.max_count`, `ocr.language`,
 `cursor.{enabled,radius,opacity,color}` (highlight ring; radius in physical px).
 
+## Security (0.9.0 hardening)
+
+- **Model output is untrusted input.** A screenshotted page can prompt-inject the model into
+  emitting live HTML. `renderMd` (Overlay.svelte) is the single markdown→HTML point and wraps
+  `marked.parse` in `DOMPurify.sanitize`. The custom code-block renderer's output (`.cb` div +
+  `.cbcopy` button + hljs spans + inline SVG) survives DOMPurify's default allowlist — verified
+  live with `<img onerror>` / `<script>` payloads stripped and copy buttons still working.
+- **CSP** (`tauri.conf.json`): `script-src 'self'`, `connect-src 'self' ipc: http://ipc.localhost`
+  (Tauri IPC on Windows goes over `http://ipc.localhost` — omit it and EVERY invoke dies),
+  `img-src 'self' data: blob:` (pins + crops are data URLs), `style-src 'unsafe-inline'` (Svelte).
+  LLM traffic is unaffected: it runs through the Rust http plugin, not webview fetch.
+  **PITFALL: CSP only exists in the built app.** Dev pages come from Vite at `localhost:1420`
+  and Tauri can't inject headers there — CSP regressions are invisible in `tauri dev`; test
+  against `pnpm tauri build --no-bundle` + the release exe (CDP attaches the same way, pages
+  live at `http://tauri.localhost/`).
+- **API key at rest**: `save_config` seals `api.api_key` with DPAPI (CURRENT_USER) →
+  `dpapi:<base64>` in config.json; `load_config` unseals, silently upgrades legacy plaintext on
+  first load, and on unseal failure (config copied from another machine/user) clears the key so
+  first-run onboarding reopens. Memory + IPC stay plaintext. `protect()` failure falls back to
+  plaintext write — a working app beats a locked-out one. Interop sanity check: PowerShell
+  `[Security.Cryptography.ProtectedData]::Unprotect()` opens the same blobs.
+  **Downgrade caveat**: ≤0.8.0 reads `dpapi:…` as the literal key → 401s until re-entered.
+- Threat-model note for the key: `%APPDATA%` already has per-user ACLs, so other local users
+  were never the issue; DPAPI guards against the config file traveling (cloud sync, backups,
+  hand-shared configs).
+- **API errors are humanized in one place** — `humanizeHttpError` (api.ts), used by both
+  `streamChat` and `fetchModels`: plain-Chinese first line per status
+  (400/401/402/403/404/408/413/422/429/5xx), raw status+body+URL below; `.err`/`.mierr`/`.hint.err`
+  render multi-line via `white-space: pre-line`.
+
 ## Auto-update & releases
 
 - **Signing keys**: `.signing/ai-lens.key` (private) + `key-password.txt` + `.pub` — the whole
@@ -251,3 +282,6 @@ Incremental Rust edits after that are seconds.
 - [x] Detach-on-send: answer streams in a draggable floating panel, desktop stays usable
 - [x] 取字: selection → local OCR → clipboard, one click
 - [x] 钉图: pin the (annotated) selection 1:1 on screen — drag / wheel zoom / multi-pin
+- [x] 0.9.0 hardening: DOMPurify on model output, CSP, DPAPI-sealed API key (see Security)
+- [x] 0.9.0 onboarding: humanized API errors, per-provider key links + first-run banner in
+      Settings, README SmartScreen note + key walkthrough (from the three-persona review)

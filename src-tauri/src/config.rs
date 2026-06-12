@@ -178,8 +178,28 @@ pub fn load_config() -> (AppConfig, Option<String>) {
         return (config, None);
     }
     match fs::read_to_string(&path) {
-        Ok(content) => match serde_json::from_str(&content) {
-            Ok(config) => (config, None),
+        Ok(content) => match serde_json::from_str::<AppConfig>(&content) {
+            Ok(mut config) => {
+                let mut notice = None;
+                if config.api.api_key.starts_with(crate::crypto::PREFIX) {
+                    match crate::crypto::unprotect(&config.api.api_key) {
+                        Some(plain) => config.api.api_key = plain,
+                        // Ciphertext from another machine/account — unusable.
+                        // Clearing the key re-triggers first-run onboarding.
+                        None => {
+                            config.api.api_key = String::new();
+                            notice = Some(
+                                "API Key 解密失败（配置可能复制自另一台电脑或用户），请在设置里重新填写"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                } else if !config.api.api_key.is_empty() {
+                    // Legacy plaintext key — upgrade the on-disk copy now.
+                    save_config(&config).ok();
+                }
+                (config, notice)
+            }
             Err(e) => (
                 AppConfig::default(),
                 Some(format!("config.json 解析失败，已用默认值：{}", e)),
@@ -195,7 +215,16 @@ pub fn load_config() -> (AppConfig, Option<String>) {
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     let dir = config_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    // The key goes to disk DPAPI-sealed; memory and IPC stay plaintext.
+    // protect() failing (no user profile?) falls back to plaintext — a working
+    // app beats a locked-out one.
+    let mut on_disk = config.clone();
+    if !on_disk.api.api_key.is_empty() && !on_disk.api.api_key.starts_with(crate::crypto::PREFIX) {
+        if let Some(sealed) = crate::crypto::protect(&on_disk.api.api_key) {
+            on_disk.api.api_key = sealed;
+        }
+    }
+    let content = serde_json::to_string_pretty(&on_disk).map_err(|e| e.to_string())?;
     fs::write(config_path(), content).map_err(|e| e.to_string())?;
     Ok(())
 }

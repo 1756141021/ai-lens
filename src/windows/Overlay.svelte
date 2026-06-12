@@ -5,6 +5,7 @@
   import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
   import { listen } from "@tauri-apps/api/event";
   import { Marked } from "marked";
+  import DOMPurify from "dompurify";
   import hljs from "highlight.js";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { loadConfig, saveConfig, toApiConfig, type AppConfig } from "../lib/config";
@@ -98,7 +99,9 @@
       },
     },
   });
-  const renderMd = (c: string) => marked.parse(c) as string;
+  // The model's output is untrusted input (a screenshotted page can carry a
+  // prompt injection that makes it emit live HTML) — sanitize before {@html}.
+  const renderMd = (c: string) => DOMPurify.sanitize(marked.parse(c) as string);
 
   async function copyText(t: string): Promise<boolean> {
     try {
@@ -854,7 +857,7 @@
   .a :global(pre code) { background: transparent; padding: 0; font-size: 12.5px; line-height: 1.55; color: #dfe4ee; }
   .a :global(p) { margin: 4px 0; }
   .a :global(ul), .a :global(ol) { padding-left: 18px; margin: 4px 0; }
-  .err { font-size: 12px; color: #ff9b9b; }
+  .err { font-size: 12px; color: #ff9b9b; white-space: pre-line; overflow-wrap: anywhere; }
   .aihint { font-size: 10.5px; color: #6b7280; }
 
   .dots { display: inline-flex; gap: 4px; }
@@ -888,7 +891,7 @@
   .mi:hover:not(:disabled) { background: rgba(255,255,255,0.08); color: #fff; }
   .mi.on { color: #3a82f6; }
   .mi:disabled { opacity: 0.5; cursor: default; }
-  .mierr { font-size: 11px; color: #ff9b9b; padding: 5px 10px; }
+  .mierr { font-size: 11px; color: #ff9b9b; padding: 5px 10px; white-space: pre-line; overflow-wrap: anywhere; }
 
   .bar { display: flex; align-items: center; gap: 10px; padding: 11px 12px 11px 12px; }
   .bar input { flex: 1; border: 0; background: transparent; outline: none; font-size: 14px; color: #eef1f6; }

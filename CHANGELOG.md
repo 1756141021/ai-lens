@@ -2,6 +2,21 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.9.0]
+
+Hardening + onboarding round, driven by a three-persona review (junior dev / staff engineer / non-technical user).
+
+### Security
+- **Markdown sanitization** — model output now passes through DOMPurify before rendering. A screenshotted page can carry a prompt injection that makes the model emit live HTML (`<img onerror=…>`, `<script>`); that HTML used to land in the webview unsanitized, with IPC in reach. Verified end-to-end: payloads stripped, normal markdown/code blocks/copy buttons intact.
+- **Content-Security-Policy enabled** (was `null`): `script-src 'self'`, external `connect-src` blocked, images limited to self/data/blob. Defense in depth behind the sanitizer. Note: CSP only applies to the built app — the dev server (Vite-served pages) runs without it.
+- **API key encrypted at rest** — `config.json` now stores the key DPAPI-sealed (`dpapi:` prefix, CURRENT_USER scope). Legacy plaintext configs upgrade automatically on next launch; in-memory and IPC stay plaintext. A config copied to another machine/user can't be decrypted — the key is cleared and onboarding reopens. **Downgrading to ≤0.8.0 after this requires re-entering the key.**
+
+### Added
+- **Human-readable API errors** — 400/401/402/403/404/408/413/422/429/5xx now lead with what to do in plain Chinese ("API Key 无效或没有权限——去设置里检查…"), with the raw status/body kept underneath for debugging.
+- **API Key guidance in Settings** — a per-provider "create a key here" link row under the API Key field (OpenAI / DeepSeek / OpenRouter / Anthropic / Google AI Studio), opening in the system browser.
+- **First-run welcome note** — when no key is configured yet, Settings opens with a short banner: the app lives in the tray, and the hotkey to press once configured.
+- **README onboarding** — SmartScreen heads-up for the unsigned installer, a "set up an AI service first" walkthrough with key-console links, and a plain-words note that requests use your own account with no middleman.
+
 ## [0.8.0]
 
 ### Added

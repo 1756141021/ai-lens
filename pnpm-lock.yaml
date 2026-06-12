@@ -23,6 +23,9 @@ importers:
       '@tauri-apps/plugin-http':
         specifier: ^2.5.9
         version: 2.5.9
+      dompurify:
+        specifier: ^3.4.9
+        version: 3.4.9
       highlight.js:
         specifier: ^11
         version: 11.11.1
@@ -522,6 +525,9 @@ packages:
   devalue@5.8.1:
     resolution: {integrity: sha512-4CXDYRBGqN+57wVJkuXBYmpAVUSg3L6JAQa/DFqm238G73E1wuyc/JhGQJzN7vUf/CMphYau2zXbfWzDR5aTEw==}
 
+  dompurify@3.4.9:
+    resolution: {integrity: sha512-4dPSRMRDqHvs0V4YDFCsaIZo4if5u0xM+llyxiM2fwuZFdKArUBAF3VtI2+n8NKg9P870WMdYk0UhqQNoWXbfQ==}
+
   esbuild@0.25.12:
     resolution: {integrity: sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==}
     engines: {node: '>=18'}
@@ -978,6 +984,10 @@ snapshots:
   deepmerge@4.3.1: {}
 
   devalue@5.8.1: {}
+
+  dompurify@3.4.9:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   esbuild@0.25.12:
     optionalDependencies:
