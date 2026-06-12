@@ -2,6 +2,21 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.9.2]
+
+First-session user feedback round.
+
+### Added
+- **Add a screenshot to an ongoing conversation** — press the capture hotkey while a chat panel is open, frame a region as usual, and a small chooser pops up at the cursor: **新问题** (start over) or **追加** (attach this capture to the current conversation as the next question's image). With no conversation open, capture behaves exactly as before. Esc / right-click in the chooser returns to the conversation.
+- **Question screenshot in the strip, click to enlarge** — the floating panel's top strip shows a thumbnail of the captured region next to the current question; click it for a full-size preview over the panel (click / Esc to close).
+
+### Fixed
+- **Shift+Enter now inserts a newline** — the ask bar was an `<input>` (single-line by nature); it's a `<textarea>` now, auto-growing up to ~5 lines. Enter still sends.
+- **Links in answers were eye-searing** — `{@html}` content carried the browser's default saturated blue/purple on the dark glass panel. Links now use the app's soft blue, and long URLs wrap instead of overflowing.
+
+### Changed
+- **The floating panel's top strip now shows the current question** — it used to be an unlabeled empty bar (just ✕ + an invisible drag region); now the question you asked stays readable there even after the answer scrolls it away. Dragging and ✕ behave as before.
+
 ## [0.9.1]
 
 ### Fixed

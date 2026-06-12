@@ -96,7 +96,21 @@ src/
   `run_on_main_thread`** with an mpsc channel for the result (pin.rs) — same hop run_capture
   uses. Pin page: `data-tauri-drag-region="deep"` makes any descendant
   drag the window while BUTTONs are exempt automatically (drag.js isClickableElement) — the
-  hover-✕ needs no pointer-events tricks. 1:1 sizing = physical position/size post-build +
+  hover-✕ needs no pointer-events tricks. The detached strip takes the other route (0.9.2):
+  its current-question label is `pointer-events: none`, so clicks fall through to the strip
+  itself and the bare `data-tauri-drag-region` keeps working without "deep" — but the strip's
+  region thumbnail IS a real button (opens the full-size lightbox over the panel), so it sits
+  out of the drag path naturally. **Add-to-conversation via the hotkey (0.9.2):** a capture
+  taken while messages exist must not wipe them — `initCapture` sets
+  `appendMode = getMessages().length > 0` and, when true, `cancelStream()` instead of
+  `clearChat()`. After framing, `appendMode` routes to `phase = "choose"` (a cursor-anchored
+  新问题/追加 popup): 新问题 → `clearChat()` + normal ask/crop; 追加 → crop + stash
+  `staged = {img, ocr}` then `shrinkOntoPanel` (factored out of `detach`) back onto the preserved
+  conversation, and the next `send` carries `staged`. Esc / right-click in "choose" (or in
+  "select" while `appendMode`) → `chooseCancel` shrinks back to the conversation, never hides —
+  no data loss, no dead window. Same `run_capture` path expands the reused overlay to fullscreen
+  (no new Rust command); only the frontend state machine grew the branch. CDP-verified on the
+  release build that Esc out of "choose" leaves IPC alive (the old deadlock class). 1:1 sizing = physical position/size post-build +
   img at 100vw/vh; wheel zoom rescales the window (0.25–3×) from the stored physical dims. answer + per-code-block copy buttons. WebView2 routes
   `navigator.clipboard` through a PermissionRequested event Tauri doesn't auto-grant, so writes go
   through `tauri-plugin-clipboard-manager` (capability `clipboard-manager:allow-write-text`).
