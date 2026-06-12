@@ -334,7 +334,15 @@
       return;
     }
     if (e.button !== 0) return;
-    if (phase === "choose") return; // 选项弹窗等点击，画布不再响应
+    // In "choose" the chooser buttons are separate DOM on top — pressing the box
+    // itself still repositions it (handy before picking 新问题/追加).
+    if (phase === "choose") {
+      if (selRect && inSel(e.clientX, e.clientY)) {
+        movingSel = true;
+        moveStart = { mx: e.clientX, my: e.clientY, rx: selRect.x, ry: selRect.y };
+      }
+      return;
+    }
     if (phase === "ask") {
       if (!inSel(e.clientX, e.clientY)) return;
       // No tool picked → drag the selection itself to a new spot.
@@ -382,7 +390,7 @@
       draw();
       return;
     }
-    if (phase === "ask" && tool === "none") overSel = inSel(e.clientX, e.clientY);
+    if ((phase === "ask" || phase === "choose") && tool === "none") overSel = inSel(e.clientX, e.clientY);
   }
   // Crop the current region (plus OCR when vision is off) as a tracked promise,
   // so an early submit waits for the image instead of sending text-only.
@@ -694,7 +702,7 @@
     oncontextmenu={(e) => e.preventDefault()}
     class:asking={phase === "ask"}
     class:drawmode={phase === "ask" && tool !== "none"}
-    class:movable={phase === "ask" && tool === "none" && overSel}
+    class:movable={(phase === "ask" || phase === "choose") && tool === "none" && overSel}
   ></canvas>
 
   {#if phase === "choose" && chooseAt}
