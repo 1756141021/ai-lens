@@ -1,3 +1,4 @@
+#[cfg(windows)]
 use std::process::Command;
 
 // async: the PowerShell call takes 1-2s — a sync command would run it on the

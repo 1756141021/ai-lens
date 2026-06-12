@@ -1,10 +1,14 @@
+mod screen;
+
+#[cfg(target_os = "linux")]
+mod portal;
+
 use crate::cache;
 use crate::config::AppConfig;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use image::RgbaImage;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use xcap::Monitor;
 
 /// The last full-screen capture, kept in memory so region cropping doesn't pay
 /// for a full-screen PNG write+read round-trip on the capture hot path.
@@ -38,17 +42,22 @@ fn encode_png(img: &image::RgbaImage) -> Result<String, String> {
     Ok(STANDARD.encode(&buf))
 }
 
-fn monitor_under_cursor(app: &tauri::AppHandle) -> Result<Monitor, String> {
-    if let Ok(pos) = app.cursor_position() {
-        if let Ok(m) = Monitor::from_point(pos.x as i32, pos.y as i32) {
-            return Ok(m);
-        }
+/// Session-appropriate backend: xcap everywhere except Wayland, which only
+/// hands out pixels through the desktop portal.
+fn backend_grab(app: &tauri::AppHandle) -> Result<(RgbaImage, CaptureMeta), String> {
+    #[cfg(target_os = "linux")]
+    if wayland_session() {
+        return portal::grab(app);
     }
-    let monitors = Monitor::all().map_err(|e| e.to_string())?;
-    monitors
-        .into_iter()
-        .next()
-        .ok_or_else(|| "No monitor found".to_string())
+    screen::grab(app)
+}
+
+#[cfg(target_os = "linux")]
+fn wayland_session() -> bool {
+    std::env::var("XDG_SESSION_TYPE")
+        .map(|v| v.eq_ignore_ascii_case("wayland"))
+        .unwrap_or(false)
+        || std::env::var("WAYLAND_DISPLAY").is_ok()
 }
 
 /// Capture the monitor under the cursor into memory (for later cropping) and
@@ -59,23 +68,8 @@ pub fn grab(
     last: &LastCapture,
     meta: &CaptureMetaState,
 ) -> Result<CaptureMeta, String> {
-    let monitor = monitor_under_cursor(app)?;
-    let origin_x = monitor.x().map_err(|e| e.to_string())?;
-    let origin_y = monitor.y().map_err(|e| e.to_string())?;
-    let scale = monitor.scale_factor().map_err(|e| e.to_string())? as f64;
-
-    let img = monitor.capture_image().map_err(|e| e.to_string())?;
-    let width = img.width();
-    let height = img.height();
+    let (img, m) = backend_grab(app)?;
     *last.lock().unwrap() = Some(img);
-
-    let m = CaptureMeta {
-        width,
-        height,
-        origin_x,
-        origin_y,
-        scale,
-    };
     *meta.lock().unwrap() = Some(m.clone());
     Ok(m)
 }

@@ -2,10 +2,11 @@ mod cache;
 mod capture;
 mod chat;
 mod config;
-mod crypto;
+#[cfg(windows)]
 mod cursor;
 mod ocr;
 mod pin;
+mod secrets;
 mod updater;
 
 use std::sync::Mutex;
@@ -99,6 +100,24 @@ fn run_capture(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// CLI surface shared by the single-instance forward and a cold start: the DE
+/// keybinding (Linux Wayland has no in-app global hotkey) fires
+/// `ai-lens --capture` whether or not the app is already running. A bare
+/// relaunch opens Settings so double-clicking the exe again does something
+/// visible instead of silently dying.
+fn handle_cli_args(app: &AppHandle, args: &[String], bare_opens_settings: bool) {
+    let has = |flag: &str| args.iter().any(|a| a == flag);
+    let h = app.clone();
+    if has("--capture") {
+        app.run_on_main_thread(move || {
+            let _ = run_capture(&h);
+        })
+        .ok();
+    } else if has("--settings") || bare_opens_settings {
+        app.run_on_main_thread(move || open_settings(&h)).ok();
+    }
+}
+
 fn open_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("settings") {
         w.show().ok();
@@ -124,6 +143,11 @@ pub fn run() {
     let needs_setup = app_config.api.api_key.trim().is_empty();
 
     tauri::Builder::default()
+        // First plugin on purpose: a second launch must forward its argv here
+        // and die before any other plugin sets up a twin tray instance.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            handle_cli_args(app, argv.get(1..).unwrap_or(&[]), true);
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
@@ -185,8 +209,11 @@ pub fn run() {
             // Prewarm the overlay (hidden) so the first capture is as fast as the rest.
             build_overlay(&handle).ok();
 
-            cursor::build_cursor_window(&handle).ok();
-            cursor::spawn_follower();
+            #[cfg(windows)]
+            {
+                cursor::build_cursor_window(&handle).ok();
+                cursor::spawn_follower();
+            }
 
             updater::spawn_startup_check(&handle);
 
@@ -194,6 +221,10 @@ pub fn run() {
             if needs_setup {
                 open_settings(&handle);
             }
+
+            // Cold start may carry the same CLI flags the DE keybinding sends.
+            let args: Vec<String> = std::env::args().skip(1).collect();
+            handle_cli_args(&handle, &args, false);
 
             Ok(())
         })

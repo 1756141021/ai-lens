@@ -208,8 +208,8 @@ pub fn load_config() -> (AppConfig, Option<String>) {
             Ok(mut config) => {
                 let mut notice = None;
                 let mut reseal = false;
-                if config.api.api_key.starts_with(crate::crypto::PREFIX) {
-                    match crate::crypto::unprotect(&config.api.api_key) {
+                if crate::secrets::is_sealed(&config.api.api_key) {
+                    match crate::secrets::unprotect(&config.api.api_key) {
                         Some(plain) => config.api.api_key = plain,
                         // Ciphertext from another machine/account — unusable.
                         // Clearing the key re-triggers first-run onboarding.
@@ -225,8 +225,8 @@ pub fn load_config() -> (AppConfig, Option<String>) {
                     // Legacy plaintext key — upgrade the on-disk copy now.
                     reseal = true;
                 }
-                if config.web.tavily_key.starts_with(crate::crypto::PREFIX) {
-                    match crate::crypto::unprotect(&config.web.tavily_key) {
+                if crate::secrets::is_sealed(&config.web.tavily_key) {
+                    match crate::secrets::unprotect(&config.web.tavily_key) {
                         Some(plain) => config.web.tavily_key = plain,
                         // Optional key — clearing it just falls back to DuckDuckGo.
                         None => config.web.tavily_key = String::new(),
@@ -254,19 +254,17 @@ pub fn load_config() -> (AppConfig, Option<String>) {
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     let dir = config_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    // The key goes to disk DPAPI-sealed; memory and IPC stay plaintext.
-    // protect() failing (no user profile?) falls back to plaintext — a working
-    // app beats a locked-out one.
+    // The key goes to disk sealed; memory and IPC stay plaintext.
+    // protect() failing (no user profile? no platform backend yet?) falls back
+    // to plaintext — a working app beats a locked-out one.
     let mut on_disk = config.clone();
-    if !on_disk.api.api_key.is_empty() && !on_disk.api.api_key.starts_with(crate::crypto::PREFIX) {
-        if let Some(sealed) = crate::crypto::protect(&on_disk.api.api_key) {
+    if !on_disk.api.api_key.is_empty() && !crate::secrets::is_sealed(&on_disk.api.api_key) {
+        if let Some(sealed) = crate::secrets::protect(&on_disk.api.api_key) {
             on_disk.api.api_key = sealed;
         }
     }
-    if !on_disk.web.tavily_key.is_empty()
-        && !on_disk.web.tavily_key.starts_with(crate::crypto::PREFIX)
-    {
-        if let Some(sealed) = crate::crypto::protect(&on_disk.web.tavily_key) {
+    if !on_disk.web.tavily_key.is_empty() && !crate::secrets::is_sealed(&on_disk.web.tavily_key) {
+        if let Some(sealed) = crate::secrets::protect(&on_disk.web.tavily_key) {
             on_disk.web.tavily_key = sealed;
         }
     }
@@ -305,6 +303,9 @@ pub fn set_config(
         crate::unregister_shortcut(&app, &old_hotkey);
         crate::register_capture_shortcut(&app, &new_hotkey).ok();
     }
+    #[cfg(windows)]
     crate::cursor::apply_config_change(&app, &old_cursor, &config.cursor);
+    #[cfg(not(windows))]
+    let _ = old_cursor;
     Ok(())
 }
