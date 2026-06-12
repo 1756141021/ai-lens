@@ -7,7 +7,7 @@ All notable changes to AI Lens are recorded here.
 First-session user feedback round.
 
 ### Added
-- **Add a screenshot to an ongoing conversation** — press the capture hotkey while a chat panel is open, frame a region as usual, and a small chooser pops up at the cursor: **新问题** (start over) or **追加** (attach this capture to the current conversation as the next question's image). With no conversation open, capture behaves exactly as before. Esc / right-click in the chooser returns to the conversation.
+- **Add a screenshot to an ongoing conversation** — press the capture hotkey while a chat panel is open, frame a region as usual, and a small chooser pops up at the cursor: **新问题** (start over) or **追加** (attach this capture to the current conversation as the next question's image). With no conversation open, capture behaves exactly as before. Esc / right-click in the chooser returns to the conversation — and backing out of a 新问题 before sending restores the old conversation too (it's only discarded once the new question is actually sent).
 - **Question screenshot in the strip, click to enlarge** — the floating panel's top strip shows a thumbnail of the captured region next to the current question; click it for a full-size preview over the panel (click / Esc to close).
 
 ### Fixed

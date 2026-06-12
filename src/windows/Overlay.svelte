@@ -17,6 +17,9 @@
     sendMessage,
     cancelStream,
     clearChat,
+    snapshotMessages,
+    restoreMessages,
+    type ChatMessage,
   } from "../lib/chat.svelte";
 
   type Meta = {
@@ -66,6 +69,9 @@
   // This capture started with a conversation already open → offer 新问题/追加.
   let appendMode = false;
   let chooseAt = $state<{ x: number; y: number } | null>(null);
+  // 新问题 clears the old conversation to look fresh, but keeps a snapshot so
+  // backing out (before the new question is sent) restores it — no data loss.
+  let savedConvo: ChatMessage[] | null = null;
   // Full-size preview of a question's screenshot, shown over the panel.
   let lightbox = $state<string | null>(null);
 
@@ -175,6 +181,7 @@
     appendMode = getMessages().length > 0;
     if (appendMode) cancelStream();
     else clearChat();
+    savedConvo = null;
 
     // Reset per-capture state — miss one and the next capture carries stale data.
     phase = "select";
@@ -223,6 +230,8 @@
       }
       // With a conversation open, Esc returns to it instead of hiding everything.
       if (phase === "choose" || (phase === "select" && appendMode)) { chooseCancel(); return; }
+      // Backed out of a 新问题 before sending → restore the old conversation.
+      if (savedConvo && phase === "ask") { restoreConvo(); return; }
       getCurrentWindow().hide();
     }
   }
@@ -386,6 +395,7 @@
     if (e.button === 2) {
       // 右键：有对话时回到对话，否则退出（隐藏复用）
       if (phase === "choose" || (phase === "select" && appendMode)) { chooseCancel(); return; }
+      if (savedConvo && phase === "ask") { restoreConvo(); return; }
       getCurrentWindow().hide();
       return;
     }
@@ -538,6 +548,8 @@
   async function chooseNew() {
     appendMode = false;
     chooseAt = null;
+    // Keep the old conversation recoverable until the new question is actually sent.
+    savedConvo = snapshotMessages();
     clearChat();
     staged = null;
     phase = "ask";
@@ -591,9 +603,21 @@
     await shrinkOntoPanel(L, T, W, H);
   }
 
+  // Backed out of a 新问题 before sending → put the old conversation back.
+  async function restoreConvo() {
+    if (!savedConvo) return;
+    restoreMessages(savedConvo);
+    savedConvo = null;
+    staged = null;
+    const { L, T, W, H } = appendPanelRect();
+    await shrinkOntoPanel(L, T, W, H);
+  }
+
   async function send(t: string) {
     if (!apiConfig) return;
     if (getMessages().length === 0) {
+      // Sending the new question commits the 新问题 discard — drop the snapshot.
+      savedConvo = null;
       pendingSend = true;
       detach();
       try {

@@ -30,6 +30,18 @@ export function clearChat() {
   cancelStream();
 }
 
+// Snapshot/restore so 新问题 can be undone before the new question is sent:
+// we clear the conversation to look fresh, but can put it back if the user backs out.
+export function snapshotMessages(): ChatMessage[] {
+  return messages.map((m) => ({ ...m }));
+}
+
+export function restoreMessages(snap: ChatMessage[]) {
+  cancelStream();
+  messages = snap;
+  error = null;
+}
+
 export function cancelStream() {
   if (abortController) {
     abortController.abort();
