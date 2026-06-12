@@ -66,6 +66,19 @@ src/
   hide/show/resize churn = visible flicker; single window + zero geometry changes = zero flicker.)
   Quick-prompt chips (解释/翻译/总结) sit between the toolbar and the input until the first
   message; they go through the same `send()` path as typing (awaits the crop, bakes annotations).
+- **Detach-on-send (floating answer panel)**: the first send shrinks the reused fullscreen
+  overlay window onto the ask stack so the desktop is usable while slow answers stream. Two-step
+  swap avoids flicker: (1) same frame — hide the canvas and pin the stack at explicit
+  fullscreen-viewport coords; (2) setPosition+setSize back-to-back, then switch the stack to
+  `inset:0` when the DOM `resize` event lands (300ms timeout fallback) — the Tauri promises
+  resolve on IPC, not on webview reflow. Geometry: stack rect (CSS px) × dpr + `meta.originX/Y`
+  (physical, can be negative). Gotchas baked in: `maximizable(false)` on the overlay builder
+  (drag-region double-click triggers Tauri's built-in toggle-maximize), `.msgs` renders
+  unconditionally in detached mode (otherwise the pendingSend gap leaves a transparent hole
+  between strip and bar), model menu max-height clamps to `100vh` (window IS the viewport).
+  Right-click-to-hide dies naturally (handler lives on the hidden canvas) — which also enables
+  right-click text copy in the panel. No focus calls in the detach path: the input keeps DOM
+  focus for an immediate follow-up, and nothing reclaims foreground after the user clicks away.
 - **Copy via clipboard-manager plugin**: answer + per-code-block copy buttons. WebView2 routes
   `navigator.clipboard` through a PermissionRequested event Tauri doesn't auto-grant, so writes go
   through `tauri-plugin-clipboard-manager` (capability `clipboard-manager:allow-write-text`).
@@ -218,3 +231,4 @@ Incremental Rust edits after that are seconds.
 - [x] First-run onboarding (no API key → Settings opens itself)
 - [x] 开机自启 toggle (tauri-plugin-autostart, OS-backed — not in config.json)
 - [x] In-app auto-update (tray menu, signed GitHub Releases, see Auto-update & releases)
+- [x] Detach-on-send: answer streams in a draggable floating panel, desktop stays usable

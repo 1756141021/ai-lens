@@ -46,6 +46,7 @@ fn build_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
+        .maximizable(false) // drag-region double-click would otherwise toggle-maximize
         .shadow(false)
         .transparent(true) // QQ-style: dim layer over the live desktop, no frozen frame
         .focused(true)

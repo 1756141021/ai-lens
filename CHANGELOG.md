@@ -2,6 +2,11 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.7.0]
+
+### Added
+- **Send and keep working** — the moment you send your question, the fullscreen dim vanishes and the overlay shrinks into a small draggable always-on-top panel next to your selection. The answer streams into the panel while the rest of the desktop is fully usable; follow up in the panel, close with Esc or ✕. Slow models no longer hold your screen hostage.
+
 ## [0.6.0]
 
 ### Added

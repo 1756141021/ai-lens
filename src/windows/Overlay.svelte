@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
   import { listen } from "@tauri-apps/api/event";
   import { Marked } from "marked";
   import hljs from "highlight.js";
@@ -30,8 +31,15 @@
 
   let canvas: HTMLCanvasElement;
   let dpr = 1;
+  let meta: Meta | null = null;
 
-  let phase = $state<"select" | "ask">("select");
+  // detached floating panel (window shrunk onto the ask stack)
+  let stackEl = $state<HTMLDivElement>();
+  let panel = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+  const MIN_PANEL_H = 260;
+  const PANEL_M = 12;
+
+  let phase = $state<"select" | "ask" | "detached">("select");
   let dragging = false;
   let sx = 0, sy = 0, ex = 0, ey = 0;
   let selRect = $state<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -142,6 +150,7 @@
 
     const m = await invoke<Meta | null>("get_capture_meta");
     if (!m) return; // prewarmed + hidden, nothing to show yet
+    meta = m;
 
     // Reset per-capture state — miss one and the next capture carries stale data.
     clearChat();
@@ -162,6 +171,7 @@
     menuOpen = false;
     pullingModels = false;
     pullError = null;
+    panel = null;
 
     dpr = window.devicePixelRatio || 1;
     sizeCanvas();
@@ -185,6 +195,7 @@
 
   function sizeCanvas() {
     if (!canvas) return;
+    dpr = window.devicePixelRatio || 1;
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     draw();
@@ -408,10 +419,45 @@
     })();
   }
 
+  // Shrink the fullscreen overlay window onto the ask stack so the desktop is
+  // usable while the answer streams. Two steps to avoid flicker: pin the stack
+  // at explicit fullscreen-viewport coords (same frame the dim vanishes), then
+  // resize the window and swap to inset:0 once the webview reflow lands.
+  async function detach() {
+    if (phase === "detached" || !stackEl || !meta) return;
+    const r = stackEl.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const W = STACK_W;
+    const H = Math.min(Math.max(Math.round(r.height), MIN_PANEL_H), vh - 2 * PANEL_M);
+    const anchoredBelow = !selRect || r.top >= selRect.y + selRect.h;
+    let L = Math.round(r.left);
+    let T = anchoredBelow ? Math.round(r.top) : Math.round(r.bottom) - H;
+    L = Math.min(Math.max(L, PANEL_M), vw - W - PANEL_M);
+    T = Math.min(Math.max(T, PANEL_M), vh - H - PANEL_M);
+
+    panel = { x: L, y: T, w: W, h: H };
+    phase = "detached";
+    await tick();
+
+    const win = getCurrentWindow();
+    let swapped = false;
+    const swap = () => {
+      if (swapped) return;
+      swapped = true;
+      window.removeEventListener("resize", swap);
+      if (phase === "detached") panel = null;
+    };
+    window.addEventListener("resize", swap);
+    setTimeout(swap, 300);
+    win.setPosition(new PhysicalPosition(meta.originX + Math.round(L * dpr), meta.originY + Math.round(T * dpr)));
+    await win.setSize(new PhysicalSize(Math.round(W * dpr), Math.round(H * dpr)));
+  }
+
   async function send(t: string) {
     if (!apiConfig) return;
     if (getMessages().length === 0) {
       pendingSend = true;
+      detach();
       try {
         // wait for the crop/OCR so the first turn always carries the image
         if (capturePromise) await capturePromise;
@@ -499,6 +545,11 @@
   // ask stack position (CSS px), anchored at selection, clamped on-screen
   const STACK_W = 560;
   let stackStyle = $derived.by(() => {
+    if (phase === "detached") {
+      return panel
+        ? `left:${panel.x}px; top:${panel.y}px; width:${panel.w}px; height:${panel.h}px;`
+        : "inset:0;";
+    }
     if (!selRect) return "display:none";
     const m = 12, vw = window.innerWidth, vh = window.innerHeight;
     let left = selRect.x;
@@ -525,10 +576,21 @@
     oncontextmenu={(e) => e.preventDefault()}
     class:asking={phase === "ask"}
     class:drawmode={phase === "ask" && tool !== "none"}
+    class:off={phase === "detached"}
   ></canvas>
 
-  {#if phase === "ask"}
-    <div class="stack" style={stackStyle}>
+  {#if phase === "ask" || phase === "detached"}
+    <div class="stack" class:detached={phase === "detached"} style={stackStyle} bind:this={stackEl}>
+      {#if phase === "detached"}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="strip glass" data-tauri-drag-region oncontextmenu={(e) => e.preventDefault()}>
+          <button class="x" title="关闭 (Esc)" onclick={() => getCurrentWindow().hide()} aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      {:else}
       <div class="tools glass">
         <button class="tl" class:on={tool === "arrow"} title="箭头"
           onclick={() => (tool = tool === "arrow" ? "none" : "arrow")}>
@@ -558,8 +620,9 @@
           </svg>
         </button>
       </div>
+      {/if}
 
-      {#if getMessages().length || getError() || captureError}
+      {#if getMessages().length || getError() || captureError || phase === "detached"}
         <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
         <div class="msgs" bind:this={msgsEl} onclick={onMsgsClick}>
           {#each getMessages() as m, i}
@@ -576,6 +639,9 @@
               </div>
             {/if}
           {/each}
+          {#if pendingSend && !getMessages().length}
+            <div class="a"><span class="dots"><i></i><i></i><i></i></span></div>
+          {/if}
           {#if captureError}<div class="err">{captureError}</div>{/if}
           {#if getError()}<div class="err">{getError()}</div>{/if}
           {#if getMessages().some((m) => m.role === "assistant")}
@@ -638,6 +704,18 @@
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; cursor: crosshair; display: block; }
   canvas.asking { cursor: default; }
   canvas.drawmode { cursor: crosshair; }
+  canvas.off { display: none; }
+
+  .strip { height: 26px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; padding: 0 3px; }
+  .strip .x {
+    width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent;
+    color: #8b90a0; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .strip .x:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .strip .x svg { width: 11px; height: 11px; }
+  .stack.detached .msgs { flex: 1 1 auto; min-height: 0; }
+  .stack.detached .bar, .stack.detached .strip { flex-shrink: 0; }
+  .stack.detached .menu { max-height: min(240px, calc(100vh - 96px)); }
 
   .tools { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
   .tl {

@@ -21,6 +21,7 @@
 ### 它做什么
 
 - 覆盖层是透明的，直接盖在实时桌面上——按下那一刻就在框选了，中间没有编码、没有等待。
+- 问题发出去的瞬间屏幕就还给你：回答在选区旁的小浮窗里慢慢流，你该干嘛干嘛，想到了再回来追问。
 - 在选区上画个箭头、圈个框、涂两笔再问，AI 看到的就是你画完的样子。
 - OpenAI、DeepSeek、Ollama、OpenRouter、Azure、Anthropic、Gemini 都能接。设置里切换，模型列表一键拉取。
 - 纯文本模型也能用：截图先过本地 Windows OCR，变成文字再发过去。
@@ -79,6 +80,7 @@ Press the hotkey and the screen dims. Drag over the thing you're curious about, 
 ### What it does
 
 - The overlay is a transparent layer over your live desktop, so the capture has nothing to encode and nothing to wait for — press, and you're already framing.
+- The moment you hit send, the screen is yours again: the answer streams into a small floating panel beside your selection while you keep working, and follow-ups happen right there.
 - Draw an arrow at the part you mean, box it, scribble on it. The AI sees exactly what you drew.
 - Talks to OpenAI, DeepSeek, Ollama, OpenRouter, Azure, Anthropic, and Gemini. Switch in Settings; one click pulls the provider's model list.
 - Text-only model? The screenshot runs through Windows OCR first and arrives as text.
