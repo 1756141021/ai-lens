@@ -87,10 +87,16 @@ src/
     answers 202 anomaly challenges and Bing's HTML is a JS shell, but Bing RSS serves clean
     results. Tavily key (DPAPI-sealed like the API key) switches the whole search to Tavily.
   - **fetchUrl guard**: http(s) only, literal private-host blocklist (localhost/127/10/172.16-31/
-    192.168/169.254/::1/fe80/.local) — DNS-rebinding is consciously out of scope (single-user
-    desktop tool, every action shown live in the UI); 15s timeout, content-type allowlist,
-    ~8k-char clip, DOMParser strip (article/main preferred). User-facing risk copy lives in
-    Settings' 应用内 mode hint.
+    192.168/169.254/::1/fe80/fc/fd/.local), plus IPv4-mapped IPv6 (`::ffff:…`, which `new URL`
+    normalizes to the hex form `::ffff:c0a8:101`) and trailing-dot hosts (`localhost.`). The guard
+    **re-runs on every redirect hop** (0.11.2): fetchUrl follows redirects by hand with
+    `maxRedirections:0` (max 5 hops), re-validating each `Location` host — auto-follow would skip
+    the guard on the redirect target, so a public page 302'ing to a LAN address used to bypass it.
+    Numeric-IP encodings (decimal/octal/hex) are caught because `new URL` normalizes them to
+    dotted-decimal before the check; DNS-rebinding stays consciously out of scope (single-user
+    desktop tool, every action shown live). `webSearch` keeps default redirect-following (fixed
+    trusted hosts — Bing 301s to www). 15s timeout, content-type allowlist, ~8k-char clip,
+    DOMParser strip (article/main preferred). User-facing risk copy lives in Settings' 应用内 hint.
   - 🌐 pill in both ask bars toggles `web.enabled` and persists via the model-pill precedent;
     ChatPanel syncs it from `config-changed` (model choice intentionally stays per-panel).
 - **Parallel conversations = one window each (0.10.0).** The overlay used to morph into the single

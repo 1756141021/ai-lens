@@ -10,30 +10,47 @@ const FETCH_TIMEOUT_MS = 15_000;
 const MAX_PAGE_CHARS = 8_000;
 const MAX_BODY_BYTES = 5_000_000;
 
+function blockedIpv4(h: string): boolean {
+  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
 // Literal-level SSRF guard: the model must not reach the machine or the LAN.
 // (DNS-rebinding is out of scope — every action is shown in the UI, and this
-// is a single-user desktop tool. Documented in DEV_NOTES.)
+// is a single-user desktop tool. Documented in DEV_NOTES.) Re-run on every
+// redirect hop — fetchUrl validates the target each time, not just the first.
 function blockedHost(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // strip [ ] brackets and a single trailing dot (127.0.0.1. / localhost. resolve too)
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) return true;
   if (h === "::1" || h === "::" || h.startsWith("fe80:") || h.startsWith("fc") || h.startsWith("fd"))
     return true;
-  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[2]);
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
+  // IPv4-mapped IPv6 — new URL() normalizes ::ffff:192.168.1.1 to ::ffff:c0a8:101 (hex)
+  const mapped = h.match(/^::ffff:(.+)$/);
+  if (mapped) {
+    const rest = mapped[1];
+    const hex = rest.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (hex) {
+      const hi = parseInt(hex[1], 16);
+      const lo = parseInt(hex[2], 16);
+      return blockedIpv4(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+    }
+    return blockedIpv4(rest); // dotted form ::ffff:192.168.1.1
   }
-  return false;
+  return blockedIpv4(h);
 }
 
 /** Fetch with a hard timeout, telling a user Stop apart from the timer. */
 async function guardedFetch(
   url: string,
-  init: { method?: string; headers: Record<string, string>; body?: string },
+  init: { method?: string; headers: Record<string, string>; body?: string; maxRedirections?: number },
   signal: AbortSignal | undefined,
 ): Promise<{ res?: Response; err?: string }> {
   const ctl = new AbortController();
@@ -71,27 +88,56 @@ function htmlToText(html: string): { title: string; text: string } {
   return { title: doc.title?.trim() ?? "", text };
 }
 
-export async function fetchUrl(rawUrl: string, signal?: AbortSignal): Promise<string> {
-  let u: URL;
-  try {
-    u = new URL(rawUrl);
-  } catch {
-    return `读取失败：不是合法的网址（${rawUrl}）`;
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return "读取失败：只允许 http/https 网址";
-  if (blockedHost(u.hostname)) return "读取失败：禁止访问本机或内网地址";
+const MAX_REDIRECTS = 5;
 
-  const { res, err } = await guardedFetch(
-    u.href,
-    {
-      headers: {
-        "User-Agent": UA,
-        Accept: "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.8,application/json;q=0.7,*/*;q=0.5",
+export async function fetchUrl(rawUrl: string, signal?: AbortSignal): Promise<string> {
+  // Follow redirects by hand so the SSRF guard re-runs on every hop — the model
+  // could be steered to a public page that 302s to http://192.168.x. Auto-follow
+  // (plugin-http's default) would skip the guard on the redirect target.
+  let target = rawUrl;
+  let res: Response | undefined;
+  let finalUrl = rawUrl;
+  for (let hop = 0; ; hop++) {
+    let u: URL;
+    try {
+      u = new URL(target);
+    } catch {
+      return hop === 0 ? `读取失败：不是合法的网址（${rawUrl}）` : "读取失败：重定向到非法地址";
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:")
+      return "读取失败：只允许 http/https 网址";
+    if (blockedHost(u.hostname)) return "读取失败：禁止访问本机或内网地址";
+
+    const r = await guardedFetch(
+      u.href,
+      {
+        maxRedirections: 0,
+        headers: {
+          "User-Agent": UA,
+          Accept:
+            "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.8,application/json;q=0.7,*/*;q=0.5",
+        },
       },
-    },
-    signal,
-  );
-  if (!res) return `读取失败：${err}`;
+      signal,
+    );
+    if (!r.res) return `读取失败：${r.err}`;
+
+    if (r.res.status >= 300 && r.res.status < 400) {
+      const loc = r.res.headers.get("location");
+      if (!loc) {
+        res = r.res; // 3xx without Location — treat as the final response
+        finalUrl = u.href;
+        break;
+      }
+      if (hop >= MAX_REDIRECTS) return "读取失败：重定向次数过多";
+      target = new URL(loc, u.href).href;
+      continue;
+    }
+    res = r.res;
+    finalUrl = u.href;
+    break;
+  }
+
   if (!res.ok) return `读取失败：网站返回 ${res.status}`;
 
   const len = Number(res.headers.get("content-length") || 0);
@@ -110,7 +156,7 @@ export async function fetchUrl(rawUrl: string, signal?: AbortSignal): Promise<st
   if (!text) return "读取成功，但页面没有可提取的正文（可能是纯脚本渲染的页面）";
   const clipped =
     text.length > MAX_PAGE_CHARS ? text.slice(0, MAX_PAGE_CHARS) + "\n…（已截断）" : text;
-  return `${title ? `【${title}】\n` : ""}${u.href}\n\n${clipped}`;
+  return `${title ? `【${title}】\n` : ""}${finalUrl}\n\n${clipped}`;
 }
 
 type SearchItem = { title: string; url: string; snippet: string };

@@ -487,7 +487,9 @@ async function* streamOpenaiTools(
       for (const tc of delta.tool_calls ?? []) {
         const slot = (calls[tc.index ?? 0] ??= { id: "", name: "", args: "" });
         if (tc.id) slot.id = tc.id;
-        if (tc.function?.name) slot.name += tc.function.name;
+        // name is atomic (sent once); only arguments stream in fragments. Some
+        // relays re-send the name — assign, don't append, or it doubles up.
+        if (tc.function?.name) slot.name = tc.function.name;
         if (tc.function?.arguments) slot.args += tc.function.arguments;
       }
     }

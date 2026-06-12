@@ -2,6 +2,15 @@
 
 All notable changes to AI Lens are recorded here.
 
+## [0.11.2]
+
+### Fixed
+- **SSRF guard hardening (app-mode web)** — `fetch_url` re-validates the host on every redirect hop instead of only the initial URL. Previously a public page the model was steered to could `302` to a LAN/loopback address and the request would follow it, defeating the "本机和内网地址已禁止访问" guarantee. The host blocklist also now catches IPv4-mapped IPv6 (`::ffff:192.168.x.x`) and trailing-dot hostnames (`localhost.`). Search providers (Bing/DuckDuckGo/Tavily) still follow their own redirects normally.
+- **Tool-call parsing** — accumulate the function name by assignment, not concatenation; a relay that re-sends the name across streaming fragments no longer corrupts it into an unknown tool.
+
+### Changed
+- **联网搜索 settings copy rewritten for non-technical users** — dropped the invented term "API 源" and the developer jargon (Responses API / Codex), added a one-line "which mode do I pick" guide above the dropdown, made the optional Tavily key visibly optional, and clarified the risk note.
+
 ## [0.11.1]
 
 ### Added

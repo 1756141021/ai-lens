@@ -247,36 +247,40 @@
         </label>
         <span class="hint">提问输入框旁的 🌐 按钮是同一个开关，随手可切。默认关闭。</span>
         {#if webEnabled}
+          <span class="hint">
+            拿不准就用<b>「应用内联网搜索」</b>，几乎所有服务商都能用；用 Claude / Gemini / OpenRouter
+            可以选「服务商自带」，更快。
+          </span>
           <label>
             <span class="lb">联网方式</span>
             <select bind:value={webMode}>
-              <option value="native">服务商自带（需 API 源开放联网）</option>
-              <option value="app">应用内搜索（不依赖 API 源）</option>
+              <option value="native">服务商自带联网（更快，需服务商支持）</option>
+              <option value="app">应用内联网搜索（更通用，本应用代为搜索）</option>
             </select>
           </label>
           {#if webMode === "native"}
             <span class="hint">
-              能不能搜，取决于你的 API 源有没有开放联网：<b>Anthropic（Claude）</b>、<b>Google Gemini</b>、
-              <b>OpenRouter</b> 官方都支持；OpenAI 兼容端点（含中转站）走 <b>Responses API</b>（Codex 同款协议），
-              源透传它就能搜——不支持会报错或答不出实时内容，那就换「应用内搜索」，那条不依赖 API 源。
-              部分服务商对联网搜索单独计费。
+              搜索由你的 AI 服务商执行：<b>Claude</b>、<b>Gemini</b>、<b>OpenRouter</b> 官方都支持，
+              多数中转站也支持。要是开了联网却答不出实时内容、或直接报错，就说明这个服务商不支持——换成
+              「应用内联网搜索」即可。部分服务商对联网单独计费。
             </span>
           {:else}
             <span class="hint">
-              由 AI Lens 代替模型执行搜索和读网页，结果喂回模型。任何支持 function calling 的
-              OpenAI 兼容服务商都能用（Anthropic / Gemini 请直接用「服务商自带」）。
+              由 AI Lens 代替 AI 去搜索、读网页，再把结果交给它。几乎所有服务商都能用，不挑联网支持。
             </span>
             <span class="hint warn">
-              使用前要知道的：模型可以请求访问<b>任意公网网址</b>——截图里若藏有恶意指令，理论上能诱导它打开特定链接；
-              读到的网页内容不一定可信。所有搜索和读取动作都会实时显示在回答上方，本机与内网地址已禁止访问。
+              使用前要知道的：AI 会读你截图里的文字，里头若被人埋了恶意指令，理论上能诱导它去访问<b>某个网址</b>；
+              它能访问任意公网网页，网页内容也不一定可信。每一次搜索、读网页都会实时显示在回答上方，
+              本机和内网地址已禁止访问。
             </span>
             <label>
-              <span class="lb">Tavily API Key（可选）</span>
-              <input type="password" bind:value={tavilyKey} placeholder="留空用必应搜索" spellcheck="false" />
+              <span class="lb">Tavily API Key（不用填，留空就行）</span>
+              <input type="password" bind:value={tavilyKey} placeholder="留空 = 用必应搜索，足够用了" spellcheck="false" />
               <span class="hint">
-                留空用必应（免注册，失败时自动换 DuckDuckGo）。想更稳可以到
+                留空就用必应（免注册，失败时自动换 DuckDuckGo），日常完全够用。只有想要更稳的搜索结果时，
+                才需要去
                 <button type="button" class="lnk" onclick={() => openUrl("https://app.tavily.com/home")}>Tavily</button>
-                免费注册一个 Key（每月有免费额度）。Key 同样加密存储。
+                免费注册一个 Key（每月有免费额度）。填了也同样加密存储。
               </span>
             </label>
           {/if}
